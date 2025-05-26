@@ -1,0 +1,33 @@
+[package]
+name = "haggis"
+version = "0.1.0"
+edition = "2021"
+description = "A general-purpose GPU compute and render engine for simulation visualizations"
+license = "MIT"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+winit = "0.30.11"
+env_logger = "0.11.8"
+log = "0.4"
+wgpu = "25.0.2"
+pollster = "0.4.0"
+bytemuck = "1.23.0"
+cgmath = "0.18.0"
+anyhow = "1.0.98"
+tobj = "4.0.3"
+thiserror = "2.0.12"
+iter = "0.1.0"
+
+[dev-dependencies]
+rand = "0.9.1"
+
+[[example]]
+name = "lbm_simulation"
+path = "examples/lbm_simulation/main.rs"
+
+[[example]]
+name = "simple_render"
+path = "examples/simple_render/main.rs"
