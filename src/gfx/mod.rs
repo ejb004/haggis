@@ -1,7 +1,10 @@
 pub mod camera;
 mod global_bindings;
+pub mod material;
 pub mod object;
+pub mod pipeline_manager;
 pub mod render_engine;
 pub mod scene;
 pub mod texture_resource;
+pub mod ui;
 mod vertex;

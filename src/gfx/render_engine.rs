@@ -1,11 +1,16 @@
-use std::{iter, sync::Arc};
+use std::{iter, os::unix::fs::PermissionsExt, sync::Arc};
 
-use wgpu::{Buffer, DepthStencilState, FrontFace, RenderPipeline, TextureFormat, TextureUsages};
+use cgmath::num_traits::PrimInt;
+use wgpu::{
+    BindGroupLayout, Buffer, DepthStencilState, Device, FrontFace, RenderPipeline, TextureFormat,
+    TextureUsages,
+};
 
 use super::{
     camera::camera_utils::CameraUniform,
     global_bindings::{update_global_ubo, GlobalBindings, GlobalUBO},
     object::DrawObject,
+    pipeline_manager::{self, PipelineConfig, PipelineManager},
     scene::Scene,
     texture_resource::TextureResource,
     vertex::*,
@@ -20,6 +25,8 @@ pub struct RenderEngine {
     format: TextureFormat,
 
     pipeline: RenderPipeline,
+
+    pub pipeline_manager: PipelineManager,
 
     global_ubo: GlobalUBO,
     global_bindings: GlobalBindings,
@@ -148,8 +155,26 @@ impl RenderEngine {
             cache: None,
         });
 
+        let device_handle: Arc<Device> = device.into();
+
+        let mut pipeline_manager = PipelineManager::new(device_handle.clone());
+
+        let _ = pipeline_manager.load_shader("default", include_str!("default.wgsl"));
+
+        // let transform_bind_group_layout = BindGroupLayout { inner: todo!() };
+
+        pipeline_manager.register_pipeline(
+            "PBR",
+            PipelineConfig::default()
+                .with_shader("default")
+                .with_depth_stencil(depth_texture.texture.clone())
+                .with_bind_group_layouts(vec![global_bindings.bind_group_layouts().clone()]),
+        );
+
+        let _ = pipeline_manager.create_all_pipelines();
+
         RenderEngine {
-            device: device.into(),
+            device: device_handle,
             config,
             format,
             surface,
@@ -157,12 +182,14 @@ impl RenderEngine {
             pipeline,
             depth_texture,
 
+            pipeline_manager,
+
             global_bindings,
             global_ubo,
         }
     }
 
-    pub fn render_frame(&self, scene: &Scene) {
+    pub fn render_frame(&mut self, scene: &Scene) {
         let surface_texture = self
             .surface
             .get_current_texture()
@@ -221,17 +248,116 @@ impl RenderEngine {
             //global bindings
             render_pass.set_bind_group(0, self.global_bindings.bind_groups(), &[]);
 
-            render_pass.set_pipeline(&self.pipeline);
-            // render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-            // render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-            // render_pass.draw_indexed(0..18, 0, 0..1);
+            // render_pass.set_pipeline(&self.pipeline);
 
-            for object in scene.objects.iter() {
-                render_pass.draw_object(object);
+            // for object in scene.objects.iter() {
+            //     render_pass.draw_object(object);
+            // }
+
+            // self.pipeline_manager.list_pipelines_to_terminal();
+
+            if let Some(pipeline) = self.pipeline_manager.get_pipeline("PBR") {
+                // println!("{:?}", pipeline);
+                // println!("hey");
+                render_pass.set_pipeline(pipeline);
+
+                // Render all objects in the scene
+                for object in scene.objects.iter() {
+                    render_pass.draw_object(object);
+                }
+            } else {
+                println!("pipeline not there!")
             }
         }
 
         self.queue.submit(iter::once(encoder.finish()));
+        surface_texture.present();
+    }
+
+    // Method to render with UI callback
+    pub fn render_frame_with_ui<F>(&mut self, scene: &Scene, ui_callback: F)
+    where
+        F: FnOnce(&wgpu::Device, &wgpu::Queue, &mut wgpu::CommandEncoder, &wgpu::TextureView),
+    {
+        let surface_texture = self
+            .surface
+            .get_current_texture()
+            .expect("Failed to get surface texture!");
+
+        let surface_texture_view =
+            surface_texture
+                .texture
+                .create_view(&wgpu::TextureViewDescriptor {
+                    label: wgpu::Label::default(),
+                    aspect: wgpu::TextureAspect::default(),
+                    format: Some(self.format),
+                    dimension: None,
+                    base_mip_level: 0,
+                    mip_level_count: None,
+                    base_array_layer: 0,
+                    array_layer_count: None,
+                    usage: None,
+                });
+
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Render Encoder"),
+            });
+
+        // Render 3D scene first
+        {
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("3D Render Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &surface_texture_view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: 0.1,
+                            g: 0.2,
+                            b: 0.3,
+                            a: 1.0,
+                        }),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &self.depth_texture.view,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(1.0),
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
+                occlusion_query_set: None,
+                timestamp_writes: None,
+            });
+
+            // Global bindings
+            render_pass.set_bind_group(0, self.global_bindings.bind_groups(), &[]);
+
+            // Render scene with your existing pipeline
+            if let Some(pipeline) = self.pipeline_manager.get_pipeline("PBR") {
+                render_pass.set_pipeline(pipeline);
+
+                // Render all objects in the scene
+                for object in scene.objects.iter() {
+                    render_pass.draw_object(object);
+                }
+            }
+        }
+
+        // Call UI callback to render UI on top
+        ui_callback(
+            &self.device,
+            &self.queue,
+            &mut encoder,
+            &surface_texture_view,
+        );
+
+        // Submit commands and present
+        self.queue.submit(std::iter::once(encoder.finish()));
         surface_texture.present();
     }
 
@@ -250,5 +376,14 @@ impl RenderEngine {
 
     pub fn device(&self) -> &wgpu::Device {
         &self.device
+    }
+
+    pub fn queue(&self) -> &wgpu::Queue {
+        &self.queue
+    }
+
+    // Method to expose the surface format for UI manager creation
+    pub fn surface_format(&self) -> wgpu::TextureFormat {
+        self.format
     }
 }

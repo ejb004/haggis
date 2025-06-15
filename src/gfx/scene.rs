@@ -4,12 +4,14 @@ use crate::gfx::object::Mesh;
 
 use super::{
     camera::camera_utils::CameraManager,
+    material::Material,
     object::{self, Object},
 };
 
 pub struct Scene {
     pub camera_manager: CameraManager,
     pub objects: Vec<Object>,
+    pub materials: Vec<Material>,
 }
 
 impl Scene {
@@ -17,6 +19,7 @@ impl Scene {
         Self {
             camera_manager,
             objects: Vec::new(),
+            materials: Vec::new(),
         }
     }
 
@@ -79,7 +82,12 @@ impl Scene {
             meshes.push(our_mesh);
         }
 
-        self.objects.push(Object { meshes });
+        self.objects.push(Object::new(meshes));
+    }
+
+    pub fn add_material(&mut self, base_color: [f32; 4], metallic: f32, roughness: f32) {
+        let material = Material::new(base_color, metallic, roughness);
+        self.materials.push(material);
     }
 
     pub fn init_gpu_resources(&mut self, device: &Device) {

@@ -106,42 +106,154 @@ impl Mesh {
         normals
     }
 }
+use cgmath::{Deg, Matrix4, SquareMatrix, Vector3};
+
+// GPU resources struct to hold all uniform buffers and bind groups
+pub struct ObjectGpuResources {
+    pub transform_buffer: wgpu::Buffer,
+    pub transform_bind_group: wgpu::BindGroup,
+    // Future material support
+    pub material_buffer: Option<wgpu::Buffer>,
+    pub material_bind_group: Option<wgpu::BindGroup>,
+}
 
 pub struct Object {
     pub meshes: Vec<Mesh>,
+    pub transform: Matrix4<f32>, // cgmath 4x4 transformation matrix
+    pub gpu_resources: Option<ObjectGpuResources>, // None until init_gpu_resources called
 }
 
 impl Object {
+    /// Create a new Object with identity transformation
+    pub fn new(meshes: Vec<Mesh>) -> Self {
+        Self {
+            meshes,
+            transform: Matrix4::identity(),
+            gpu_resources: None,
+        }
+    }
+
+    /// Set translation
+    pub fn set_translation(&mut self, translation: Vector3<f32>) {
+        self.transform = Matrix4::from_translation(translation);
+    }
+
+    /// Apply translation (multiplies with existing transform)
+    pub fn translate(&mut self, translation: Vector3<f32>) {
+        self.transform = self.transform * Matrix4::from_translation(translation);
+    }
+
+    /// Set uniform scale
+    pub fn set_scale(&mut self, scale: f32) {
+        self.transform = Matrix4::from_scale(scale);
+    }
+
+    /// Set non-uniform scale
+    pub fn set_scale_xyz(&mut self, scale: Vector3<f32>) {
+        self.transform = Matrix4::from_nonuniform_scale(scale.x, scale.y, scale.z);
+    }
+
+    /// Set rotation around X axis
+    pub fn set_rotation_x(&mut self, angle: Deg<f32>) {
+        self.transform = Matrix4::from_angle_x(angle);
+    }
+
+    /// Set rotation around Y axis
+    pub fn set_rotation_y(&mut self, angle: Deg<f32>) {
+        self.transform = Matrix4::from_angle_y(angle);
+    }
+
+    /// Set rotation around Z axis
+    pub fn set_rotation_z(&mut self, angle: Deg<f32>) {
+        self.transform = Matrix4::from_angle_z(angle);
+    }
+
+    /// Apply rotation around X axis
+    pub fn rotate_x(&mut self, angle: Deg<f32>) {
+        self.transform = self.transform * Matrix4::from_angle_x(angle);
+    }
+
+    /// Apply rotation around Y axis
+    pub fn rotate_y(&mut self, angle: Deg<f32>) {
+        self.transform = self.transform * Matrix4::from_angle_y(angle);
+    }
+
+    /// Apply rotation around Z axis
+    pub fn rotate_z(&mut self, angle: Deg<f32>) {
+        self.transform = self.transform * Matrix4::from_angle_z(angle);
+    }
+
+    /// Create a complete transform from translation, rotation, and scale
+    pub fn set_transform_trs(
+        &mut self,
+        translation: Vector3<f32>,
+        rotation_y: Deg<f32>,
+        scale: f32,
+    ) {
+        let t = Matrix4::from_translation(translation);
+        let r = Matrix4::from_angle_y(rotation_y);
+        let s = Matrix4::from_scale(scale);
+        self.transform = t * r * s; // Order matters: T * R * S
+    }
+
+    /// Reset to identity matrix
+    pub fn reset_transform(&mut self) {
+        self.transform = Matrix4::identity();
+    }
+
+    /// Update the transformation matrix and sync to GPU if resources exist
+    pub fn update_transform(&mut self, queue: &wgpu::Queue) {
+        if let Some(gpu_resources) = &self.gpu_resources {
+            // cgmath matrices are column-major, which is what GPU expects
+            let transform_data: &[f32; 16] = self.transform.as_ref();
+
+            queue.write_buffer(
+                &gpu_resources.transform_buffer,
+                0,
+                bytemuck::cast_slice(transform_data),
+            );
+        }
+    }
+
+    /// Get the transform bind group for rendering
+    pub fn get_transform_bind_group(&self) -> Option<&wgpu::BindGroup> {
+        self.gpu_resources
+            .as_ref()
+            .map(|res| &res.transform_bind_group)
+    }
+
     pub fn init_gpu_resources(&mut self, device: &Device) {
         println!("=== GPU BUFFER CREATION DEBUG ===");
+
+        // Initialize mesh buffers
         for (mesh_idx, mesh) in self.meshes.iter_mut().enumerate() {
-            println!("Creating buffers for mesh {}:", mesh_idx);
-            println!(
-                "  Vertices: {} (size: {} bytes)",
-                mesh.vertices.len(),
-                mesh.vertices.len() * std::mem::size_of::<Vertex3D>()
-            );
-            println!(
-                "  Indices: {} (size: {} bytes)",
-                mesh.indices.len(),
-                mesh.indices.len() * std::mem::size_of::<u32>()
-            );
+            // println!("Creating buffers for mesh {}:", mesh_idx);
+            // println!(
+            //     "  Vertices: {} (size: {} bytes)",
+            //     mesh.vertices.len(),
+            //     mesh.vertices.len() * std::mem::size_of::<Vertex3D>()
+            // );
+            // println!(
+            //     "  Indices: {} (size: {} bytes)",
+            //     mesh.indices.len(),
+            //     mesh.indices.len() * std::mem::size_of::<u32>()
+            // );
 
             // Show what bytemuck will convert
             let vertex_bytes = bytemuck::cast_slice(&mesh.vertices);
             let index_bytes = bytemuck::cast_slice(&mesh.indices);
-            println!("  Vertex buffer bytes: {}", vertex_bytes.len());
-            println!("  Index buffer bytes: {}", index_bytes.len());
+            // println!("  Vertex buffer bytes: {}", vertex_bytes.len());
+            // println!("  Index buffer bytes: {}", index_bytes.len());
 
-            // Show first few raw bytes
-            println!(
-                "  First vertex as bytes: {:?}",
-                &vertex_bytes[0..24.min(vertex_bytes.len())]
-            );
-            println!(
-                "  First few indices as bytes: {:?}",
-                &index_bytes[0..12.min(index_bytes.len())]
-            );
+            // // Show first few raw bytes
+            // println!(
+            //     "  First vertex as bytes: {:?}",
+            //     &vertex_bytes[0..24.min(vertex_bytes.len())]
+            // );
+            // println!(
+            //     "  First few indices as bytes: {:?}",
+            //     &index_bytes[0..12.min(index_bytes.len())]
+            // );
 
             let vertex_buffer = wgpu::util::DeviceExt::create_buffer_init(
                 device,
@@ -166,7 +278,56 @@ impl Object {
 
             println!("  ✓ Buffers created successfully");
         }
-        println!("=== END GPU BUFFER DEBUG ===\n");
+
+        // Create transform uniform buffer and bind group
+        println!("Creating transform uniform resources...");
+
+        // cgmath matrices are already column-major for GPU
+        let transform_data: &[f32; 16] = self.transform.as_ref();
+
+        let transform_buffer = wgpu::util::DeviceExt::create_buffer_init(
+            device,
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("Transform Uniform Buffer"),
+                contents: bytemuck::cast_slice(transform_data),
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            },
+        );
+
+        let transform_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Transform Bind Group Layout"),
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+            });
+
+        let transform_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Transform Bind Group"),
+            layout: &transform_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: transform_buffer.as_entire_binding(),
+            }],
+        });
+
+        // Store GPU resources
+        self.gpu_resources = Some(ObjectGpuResources {
+            transform_buffer,
+            transform_bind_group,
+            material_buffer: None,
+            material_bind_group: None,
+        });
+
+        // println!("  ✓ Transform uniform resources created successfully");
+        // println!("=== END GPU BUFFER DEBUG ===\n");
     }
 }
 
