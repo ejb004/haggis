@@ -95,4 +95,35 @@ impl Scene {
             object.init_gpu_resources(device);
         }
     }
+
+    pub fn update_all_transforms(&mut self, queue: &wgpu::Queue) {
+        for object in &mut self.objects {
+            if object.gpu_resources.is_some() {
+                object.update_transform(queue);
+            }
+        }
+    }
+
+    // ui stuff
+
+    pub fn get_object_names(&self) -> Vec<String> {
+        self.objects.iter().map(|obj| obj.name.clone()).collect()
+    }
+
+    pub fn get_object_count(&self) -> usize {
+        self.objects.len()
+    }
+
+    pub fn get_object_mut(&mut self, index: usize) -> Option<&mut Object> {
+        self.objects.get_mut(index)
+    }
+
+    pub fn apply_ui_transforms_and_update_gpu(&mut self, queue: &wgpu::Queue) {
+        for object in &mut self.objects {
+            if object.visible {
+                object.apply_ui_transform();
+                object.update_transform(queue);
+            }
+        }
+    }
 }

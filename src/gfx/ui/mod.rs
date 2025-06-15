@@ -6,6 +6,8 @@ imgui-wgpu = "0.24"
 imgui-winit-support = "0.12"
 */
 
+pub mod panel;
+
 use imgui::{Context, FontConfig, FontSource, MouseCursor, Ui};
 use imgui_wgpu::{Renderer, RendererConfig};
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
@@ -41,9 +43,10 @@ impl UiManager {
 
         // Setup fonts
         let hidpi_factor = window.scale_factor();
-        let font_size = (13.0 * hidpi_factor) as f32;
+        let font_size = (12.0 * hidpi_factor) as f32; // Increased from 13.0
         context.io_mut().font_global_scale = (1.0 / hidpi_factor) as f32;
 
+        // Option 1: Use a built-in font with different size
         context.fonts().add_font(&[FontSource::DefaultFontData {
             config: Some(FontConfig {
                 oversample_h: 1,
@@ -52,6 +55,18 @@ impl UiManager {
                 ..Default::default()
             }),
         }]);
+
+        // Option 2: Load a custom font from file (uncomment to use)
+        // context.fonts().add_font(&[FontSource::TtfData {
+        //     data: include_bytes!("./fonts/roboto.ttf"), // Path to your font
+        //     size_pixels: font_size,
+        //     config: Some(FontConfig {
+        //         oversample_h: 1,
+        //         pixel_snap_h: true,
+        //         size_pixels: font_size,
+        //         ..Default::default()
+        //     }),
+        // }]);
 
         // Create renderer
         let renderer_config = RendererConfig {
@@ -93,16 +108,9 @@ impl UiManager {
         }
     }
 
-    pub fn draw<F>(
-        &mut self,
-        device: &Device,
-        queue: &Queue,
-        encoder: &mut CommandEncoder,
-        window: &Window,
-        color_attachment: &TextureView,
-        run_ui: F,
-    ) where
-        F: FnOnce(&Ui),
+    pub fn update_logic<F>(&mut self, window: &Window, run_ui: F) -> bool
+    where
+        F: FnOnce(&imgui::Ui),
     {
         // Update delta time
         let now = Instant::now();
@@ -116,10 +124,8 @@ impl UiManager {
             .prepare_frame(self.context.io_mut(), window)
             .expect("Failed to prepare frame");
 
-        // Create UI frame
+        // Create UI frame and run logic
         let ui = self.context.frame();
-
-        // Run user UI code
         run_ui(&ui);
 
         // Handle cursor changes
@@ -128,10 +134,22 @@ impl UiManager {
             self.platform.prepare_render(&ui, window);
         }
 
-        // Get draw data from context
+        // Don't render yet - just return if UI wants input capture
+        let io = self.context.io();
+        io.want_capture_mouse || io.want_capture_keyboard
+    }
+
+    pub fn render_display_only(
+        &mut self,
+        device: &Device,
+        queue: &Queue,
+        encoder: &mut CommandEncoder,
+        window: &Window,
+        color_attachment: &TextureView,
+    ) {
+        // Get the draw data from the last frame
         let draw_data = self.context.render();
 
-        // Render
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("imgui_render_pass"),
@@ -139,7 +157,7 @@ impl UiManager {
                     view: color_attachment,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Load,
+                        load: wgpu::LoadOp::Load, // Load existing 3D scene
                         store: wgpu::StoreOp::Store,
                     },
                 })],
@@ -152,5 +170,21 @@ impl UiManager {
                 .render(draw_data, queue, device, &mut render_pass)
                 .expect("Failed to render ImGui");
         }
+    }
+
+    pub fn draw<F>(
+        &mut self,
+        device: &Device,
+        queue: &Queue,
+        encoder: &mut CommandEncoder,
+        window: &Window,
+        color_attachment: &TextureView,
+        run_ui: F,
+    ) where
+        F: FnOnce(&imgui::Ui),
+    {
+        // This combines update_logic + render_display_only
+        self.update_logic(window, run_ui);
+        self.render_display_only(device, queue, encoder, window, color_attachment);
     }
 }

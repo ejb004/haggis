@@ -67,7 +67,7 @@ impl OrbitCamera {
     pub fn add_distance(&mut self, delta: f32) {
         let corrected_zoom = f32::log10(self.distance) * delta;
         self.set_distance(self.distance + corrected_zoom);
-        println!("{:}", self.distance)
+        // println!("{:}", self.distance)
     }
 
     pub fn set_pitch(&mut self, pitch: f32) {

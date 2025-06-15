@@ -2,6 +2,8 @@ use std::ops::Range;
 
 use wgpu::Device;
 
+use crate::app::HaggisApp;
+
 use super::vertex::Vertex3D;
 
 pub struct Mesh {
@@ -106,7 +108,68 @@ impl Mesh {
         normals
     }
 }
+
 use cgmath::{Deg, Matrix4, SquareMatrix, Vector3};
+
+// 1. Create a builder struct that holds a reference to the app and the object index
+pub struct ObjectBuilder<'a> {
+    app: &'a mut HaggisApp,
+    object_index: usize,
+}
+
+impl<'a> ObjectBuilder<'a> {
+    pub fn new(app: &'a mut HaggisApp, object_index: usize) -> Self {
+        Self { app, object_index }
+    }
+
+    pub fn with_transform(self, position: [f32; 3], scale: f32, rotation_y: f32) -> Self {
+        // Apply transform to the object
+        if let Some(object) = self.app.app_state.scene.objects.get_mut(self.object_index) {
+            use cgmath::{Deg, Vector3};
+
+            object.set_transform_trs(
+                Vector3::new(position[0], position[1], position[2]),
+                Deg(rotation_y),
+                scale,
+            );
+        }
+        self
+    }
+
+    pub fn with_position(self, position: [f32; 3]) -> Self {
+        if let Some(object) = self.app.app_state.scene.objects.get_mut(self.object_index) {
+            use cgmath::Vector3;
+            object.set_translation(Vector3::new(position[0], position[1], position[2]));
+        }
+        self
+    }
+
+    pub fn with_scale(self, scale: f32) -> Self {
+        if let Some(object) = self.app.app_state.scene.objects.get_mut(self.object_index) {
+            object.set_scale(scale);
+        }
+        self
+    }
+
+    pub fn with_rotation_y(self, rotation_y: f32) -> Self {
+        if let Some(object) = self.app.app_state.scene.objects.get_mut(self.object_index) {
+            use cgmath::Deg;
+            object.set_rotation_y(Deg(rotation_y));
+        }
+        self
+    }
+
+    pub fn with_rotation_xyz(self, rotation: [f32; 3]) -> Self {
+        if let Some(object) = self.app.app_state.scene.objects.get_mut(self.object_index) {
+            use cgmath::Deg;
+            object.reset_transform();
+            object.rotate_x(Deg(rotation[0]));
+            object.rotate_y(Deg(rotation[1]));
+            object.rotate_z(Deg(rotation[2]));
+        }
+        self
+    }
+}
 
 // GPU resources struct to hold all uniform buffers and bind groups
 pub struct ObjectGpuResources {
@@ -117,10 +180,31 @@ pub struct ObjectGpuResources {
     pub material_bind_group: Option<wgpu::BindGroup>,
 }
 
+#[derive(Clone)]
+pub struct UiTransformState {
+    pub position: [f32; 3],
+    pub rotation: [f32; 3], // degrees
+    pub scale: f32,
+}
+
+impl Default for UiTransformState {
+    fn default() -> Self {
+        Self {
+            position: [0.0, 0.0, 0.0],
+            rotation: [0.0, 0.0, 0.0],
+            scale: 1.0,
+        }
+    }
+}
+
 pub struct Object {
     pub meshes: Vec<Mesh>,
     pub transform: Matrix4<f32>, // cgmath 4x4 transformation matrix
     pub gpu_resources: Option<ObjectGpuResources>, // None until init_gpu_resources called
+
+    pub name: String,
+    pub ui_transform: UiTransformState,
+    pub visible: bool,
 }
 
 impl Object {
@@ -130,7 +214,54 @@ impl Object {
             meshes,
             transform: Matrix4::identity(),
             gpu_resources: None,
+            name: "Object".to_string(),
+            ui_transform: UiTransformState::default(),
+            visible: true,
         }
+    }
+
+    pub fn set_name(&mut self, name: String) {
+        self.name = name;
+    }
+
+    /// Apply UI transform state to the actual transform matrix
+    pub fn apply_ui_transform(&mut self) {
+        use cgmath::{Deg, Vector3};
+
+        self.reset_transform();
+
+        // Apply TRS from UI state
+        self.set_transform_trs(
+            Vector3::new(
+                self.ui_transform.position[0],
+                self.ui_transform.position[1],
+                self.ui_transform.position[2],
+            ),
+            Deg(self.ui_transform.rotation[1]), // Y rotation
+            self.ui_transform.scale,
+        );
+
+        // Apply X and Z rotations
+        self.rotate_x(Deg(self.ui_transform.rotation[0]));
+        self.rotate_z(Deg(self.ui_transform.rotation[2]));
+    }
+
+    /// Sync current transform matrix back to UI state (for initialization)
+    pub fn sync_transform_to_ui(&mut self) {
+        // Extract translation from transform matrix
+        let transform_data: &[f32; 16] = self.transform.as_ref();
+        self.ui_transform.position[0] = transform_data[12];
+        self.ui_transform.position[1] = transform_data[13];
+        self.ui_transform.position[2] = transform_data[14];
+
+        // Extract scale (assuming uniform scale)
+        let scale_x =
+            (transform_data[0].powi(2) + transform_data[1].powi(2) + transform_data[2].powi(2))
+                .sqrt();
+        self.ui_transform.scale = scale_x;
+
+        // Note: Extracting rotation from matrix is complex, so we'll keep it simple for now
+        // Rotations will start at 0 when UI is opened
     }
 
     /// Set translation
@@ -227,33 +358,8 @@ impl Object {
 
         // Initialize mesh buffers
         for (mesh_idx, mesh) in self.meshes.iter_mut().enumerate() {
-            // println!("Creating buffers for mesh {}:", mesh_idx);
-            // println!(
-            //     "  Vertices: {} (size: {} bytes)",
-            //     mesh.vertices.len(),
-            //     mesh.vertices.len() * std::mem::size_of::<Vertex3D>()
-            // );
-            // println!(
-            //     "  Indices: {} (size: {} bytes)",
-            //     mesh.indices.len(),
-            //     mesh.indices.len() * std::mem::size_of::<u32>()
-            // );
-
-            // Show what bytemuck will convert
             let vertex_bytes = bytemuck::cast_slice(&mesh.vertices);
             let index_bytes = bytemuck::cast_slice(&mesh.indices);
-            // println!("  Vertex buffer bytes: {}", vertex_bytes.len());
-            // println!("  Index buffer bytes: {}", index_bytes.len());
-
-            // // Show first few raw bytes
-            // println!(
-            //     "  First vertex as bytes: {:?}",
-            //     &vertex_bytes[0..24.min(vertex_bytes.len())]
-            // );
-            // println!(
-            //     "  First few indices as bytes: {:?}",
-            //     &index_bytes[0..12.min(index_bytes.len())]
-            // );
 
             let vertex_buffer = wgpu::util::DeviceExt::create_buffer_init(
                 device,
@@ -325,9 +431,6 @@ impl Object {
             material_buffer: None,
             material_bind_group: None,
         });
-
-        // println!("  ✓ Transform uniform resources created successfully");
-        // println!("=== END GPU BUFFER DEBUG ===\n");
     }
 }
 
@@ -356,12 +459,6 @@ where
             None => return,
         };
 
-        // println!(
-        //     "Drawing mesh: {} indices ({} triangles)",
-        //     mesh.index_count,
-        //     mesh.index_count / 3
-        // );
-
         self.set_vertex_buffer(0, vertex_buffer.slice(..));
         self.set_index_buffer(index_buffer.slice(..), wgpu::IndexFormat::Uint32);
         self.draw_indexed(0..mesh.index_count, 0, instances);
@@ -372,6 +469,11 @@ where
     }
 
     fn draw_object_instanced(&mut self, object: &'b Object, instances: Range<u32>) {
+        // IMPORTANT: Bind transform for this object (Group 1) before drawing meshes
+        if let Some(gpu_resources) = &object.gpu_resources {
+            self.set_bind_group(1, &gpu_resources.transform_bind_group, &[]);
+        }
+
         for mesh in &object.meshes {
             self.draw_mesh_instanced(mesh, instances.clone());
         }

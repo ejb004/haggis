@@ -12,26 +12,29 @@ use crate::gfx::{
     camera::{
         camera_controller::CameraController, camera_utils::CameraManager, orbit_camera::OrbitCamera,
     },
+    object::ObjectBuilder,
     render_engine::RenderEngine,
     scene::Scene,
     ui::UiManager,
 };
 
 // UI callback type
-pub type UiCallback = Box<dyn Fn(&imgui::Ui) + Send + Sync>;
+pub type UiCallback = Box<dyn Fn(&imgui::Ui, &mut Scene, &mut Option<usize>) + Send + Sync>;
 
 pub struct HaggisApp {
     event_loop: Option<EventLoop<()>>,
-    app_state: AppState,
-    ui_callback: Option<UiCallback>,
+    pub app_state: AppState,
 }
 
-struct AppState {
+pub struct AppState {
     window: Option<Arc<Window>>,
     render_engine: Option<RenderEngine>,
     ui_manager: Option<UiManager>,
-    scene: Scene,
-    ui_callback: Option<UiCallback>,
+
+    pub scene: Scene,
+    pub ui_callback: Option<UiCallback>,
+
+    selected_object_index: Option<usize>,
 }
 
 impl HaggisApp {
@@ -54,23 +57,30 @@ impl HaggisApp {
                 scene,
                 ui_manager: None,
                 ui_callback: None,
+                selected_object_index: Some(0),
             },
-            ui_callback: None,
         }
     }
 
     /// Set UI callback
+    // pub fn set_ui<F>(&mut self, ui_fn: F)
+    // where
+    //     F: Fn(&imgui::Ui) + Send + Sync + 'static,
+    // {
+    //     self.app_state.ui_callback = Some(Box::new(ui_fn));
+    // }
+
     pub fn set_ui<F>(&mut self, ui_fn: F)
     where
-        F: Fn(&imgui::Ui) + Send + Sync + 'static,
+        F: Fn(&imgui::Ui, &mut Scene, &mut Option<usize>) + Send + Sync + 'static,
     {
-        self.ui_callback = Some(Box::new(ui_fn));
+        self.app_state.ui_callback = Some(Box::new(ui_fn));
     }
 
     /// Run the application (consumes self and starts the event loop)
     pub fn run(mut self) {
         // Move UI callback to app_state
-        self.app_state.ui_callback = self.ui_callback.take();
+        self.app_state.ui_callback = self.app_state.ui_callback.take();
 
         let event_loop = self.event_loop.take().expect("Event loop already consumed");
         event_loop.set_control_flow(ControlFlow::Poll);
@@ -80,8 +90,31 @@ impl HaggisApp {
             .expect("Failed to run event loop");
     }
 
-    pub fn add_object(&mut self, object_path: &str) {
-        self.app_state.scene.add_object(object_path)
+    pub fn add_object(&mut self, object_path: &str) -> ObjectBuilder {
+        let object_index = self.app_state.scene.objects.len();
+
+        // Add the object to scene
+        self.app_state.scene.add_object(object_path);
+
+        // Set the object name from file path
+        if let Some(object) = self.app_state.scene.objects.get_mut(object_index) {
+            let object_name = std::path::Path::new(object_path)
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("Object")
+                .to_string();
+            object.set_name(object_name);
+
+            // Sync current transform to UI state
+            object.sync_transform_to_ui();
+        }
+
+        ObjectBuilder::new(self, object_index)
+    }
+
+    // Keep the old method for backwards compatibility
+    pub fn add_object_simple(&mut self, object_path: &str) {
+        self.app_state.scene.add_object(object_path);
     }
 }
 
@@ -107,7 +140,9 @@ impl ApplicationHandler for AppState {
 
             self.scene.init_gpu_resources(renderer.device());
 
-            // Create UI manager
+            // *** ADD THIS: Update all transforms after GPU initialization ***
+            self.scene.update_all_transforms(renderer.queue());
+
             let ui_manager = UiManager::new(
                 renderer.device(),
                 renderer.queue(),
@@ -178,30 +213,64 @@ impl ApplicationHandler for AppState {
                 event_loop.exit();
             }
             WindowEvent::RedrawRequested => {
-                self.scene.update();
-                render_engine.update(self.scene.camera_manager.camera.uniform);
+                // Early return if no render engine
+                let Some(_) = self.render_engine.as_ref() else {
+                    return;
+                };
 
-                // Render with UI if available
+                // PASS 1: UI Logic & Scene Updates
+
+                // Update scene
+                self.scene.update();
+
+                // Handle UI logic and scene modifications
                 if let (Some(ui_manager), Some(ui_callback)) =
                     (self.ui_manager.as_mut(), &self.ui_callback)
                 {
-                    let window_clone = window.clone();
+                    // Run UI logic - this modifies the scene
+                    let ui_wants_input = ui_manager.update_logic(window, |ui| {
+                        ui_callback(ui, &mut self.scene, &mut self.selected_object_index);
+                    });
+
+                    // Update camera controls only if UI doesn't want input
+                    if !ui_wants_input {
+                        // Camera can process input normally
+                    }
+                }
+
+                // Apply any transform changes from UI to GPU
+                if let Some(render_engine_ref) = self.render_engine.as_ref() {
+                    self.scene
+                        .apply_ui_transforms_and_update_gpu(render_engine_ref.queue());
+                }
+
+                // Get mutable reference to render engine for the rest
+                let Some(render_engine) = self.render_engine.as_mut() else {
+                    return;
+                };
+
+                // Update camera uniforms
+                render_engine.update(self.scene.camera_manager.camera.uniform);
+
+                // PASS 2: Rendering Only
+
+                if self.ui_manager.is_some() {
+                    // Render 3D scene + UI overlay
                     render_engine.render_frame_with_ui(
                         &self.scene,
                         |device, queue, encoder, color_attachment| {
-                            ui_manager.draw(
+                            // Render UI display (no scene modification here)
+                            self.ui_manager.as_mut().unwrap().render_display_only(
                                 device,
                                 queue,
                                 encoder,
-                                &window_clone,
+                                window,
                                 color_attachment,
-                                |ui| {
-                                    ui_callback(ui);
-                                },
                             );
                         },
                     );
                 } else {
+                    // Just render 3D scene
                     render_engine.render_frame(&self.scene);
                 }
             }

@@ -24,8 +24,6 @@ pub struct RenderEngine {
     depth_texture: TextureResource,
     format: TextureFormat,
 
-    pipeline: RenderPipeline,
-
     pub pipeline_manager: PipelineManager,
 
     global_ubo: GlobalUBO,
@@ -97,78 +95,37 @@ impl RenderEngine {
         let mut global_bindings = GlobalBindings::new(&device);
         global_bindings.create_bind_group(&device, &global_ubo);
 
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
-        });
-
-        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: None,
-            bind_group_layouts: &[global_bindings.bind_group_layouts()],
-            push_constant_ranges: &[],
-        });
-
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: None,
-            layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("vs_main"),
-                buffers: &[Vertex3D::desc()],
-                compilation_options: Default::default(),
-            },
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                strip_index_format: None,
-                front_face: wgpu::FrontFace::Ccw,
-                // cull_mode: Some(wgpu::Face::Back),
-                cull_mode: None,
-                polygon_mode: wgpu::PolygonMode::Fill,
-                conservative: false,
-                unclipped_depth: false,
-            },
-            // depth_stencil: None,
-            depth_stencil: Some(DepthStencilState {
-                format: depth_texture.texture.format(),
-                depth_write_enabled: true,
-                depth_compare: wgpu::CompareFunction::Less,
-                stencil: wgpu::StencilState::default(),
-                bias: wgpu::DepthBiasState::default(),
-            }),
-            multisample: wgpu::MultisampleState {
-                count: 1,
-                mask: !0,
-                alpha_to_coverage_enabled: false,
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some("fs_main"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format,
-                    // blend: Some(wgpu::BlendState::ALPHA_BLENDING),
-                    blend: Some(wgpu::BlendState::REPLACE),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: Default::default(),
-            }),
-            multiview: None,
-            cache: None,
-        });
+        // Create transform bind group layout
+        let transform_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Transform Bind Group Layout"),
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+            });
 
         let device_handle: Arc<Device> = device.into();
 
         let mut pipeline_manager = PipelineManager::new(device_handle.clone());
 
-        let _ = pipeline_manager.load_shader("default", include_str!("default.wgsl"));
-
-        // let transform_bind_group_layout = BindGroupLayout { inner: todo!() };
+        let _ = pipeline_manager.load_shader("default", include_str!("shader.wgsl"));
 
         pipeline_manager.register_pipeline(
             "PBR",
             PipelineConfig::default()
                 .with_shader("default")
                 .with_depth_stencil(depth_texture.texture.clone())
-                .with_bind_group_layouts(vec![global_bindings.bind_group_layouts().clone()]),
+                .with_bind_group_layouts(vec![
+                    global_bindings.bind_group_layouts().clone(),
+                    transform_bind_group_layout, // Add transform layout
+                ]),
         );
 
         let _ = pipeline_manager.create_all_pipelines();
@@ -179,7 +136,6 @@ impl RenderEngine {
             format,
             surface,
             queue: queue.into(),
-            pipeline,
             depth_texture,
 
             pipeline_manager,
@@ -257,16 +213,41 @@ impl RenderEngine {
             // self.pipeline_manager.list_pipelines_to_terminal();
 
             if let Some(pipeline) = self.pipeline_manager.get_pipeline("PBR") {
-                // println!("{:?}", pipeline);
-                // println!("hey");
                 render_pass.set_pipeline(pipeline);
 
+                // Debug: Check each object's transform state
+                println!("=== RENDER DEBUG ===");
+                println!("Rendering {} objects", scene.objects.len());
+
                 // Render all objects in the scene
-                for object in scene.objects.iter() {
+                for (i, object) in scene.objects.iter().enumerate() {
+                    println!(
+                        "Object {}: GPU resources: {}",
+                        i,
+                        object.gpu_resources.is_some()
+                    );
+
+                    if let Some(_gpu_resources) = &object.gpu_resources {
+                        // Print the transform matrix (translation components)
+                        let transform_data: &[f32; 16] = object.transform.as_ref();
+                        println!(
+                            "  Transform matrix translation: [{:.2}, {:.2}, {:.2}]",
+                            transform_data[12], transform_data[13], transform_data[14]
+                        );
+                        println!(
+                            "  Transform matrix scale: [{:.2}, {:.2}, {:.2}]",
+                            transform_data[0], transform_data[5], transform_data[10]
+                        );
+                    } else {
+                        println!("  ❌ No GPU resources - transform won't be applied!");
+                    }
+
                     render_pass.draw_object(object);
+                    println!("  ✓ Object {} rendered", i);
                 }
+                println!("=== END RENDER DEBUG ===");
             } else {
-                println!("pipeline not there!")
+                println!("❌ PBR pipeline not found!");
             }
         }
 
@@ -343,7 +324,9 @@ impl RenderEngine {
 
                 // Render all objects in the scene
                 for object in scene.objects.iter() {
-                    render_pass.draw_object(object);
+                    if object.visible {
+                        render_pass.draw_object(object);
+                    }
                 }
             }
         }

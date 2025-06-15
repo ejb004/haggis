@@ -86,6 +86,8 @@ pub mod gfx;
 /// Low-level wgpu utilities and helpers
 pub mod wgpu_utils;
 
+use gfx::ui::panel;
+
 // Re-export commonly used types for convenience
 
 /// Creates a new Haggis application synchronously using default settings.
