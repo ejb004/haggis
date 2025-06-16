@@ -348,13 +348,50 @@ impl RenderEngine {
         update_global_ubo(&mut self.global_ubo, &self.queue, camera_uniform);
     }
 
+    // FIXED: Proper resize handling with validation
     pub fn resize(&mut self, width: u32, height: u32) {
-        self.config.width = width;
-        self.config.height = height;
+        // Validate dimensions - prevent zero or extremely small sizes
+        if width == 0 || height == 0 {
+            println!(
+                "Warning: Attempted to resize to invalid dimensions: {}x{}",
+                width, height
+            );
+            return;
+        }
+
+        // Additional safety check for reasonable minimum size
+        let min_width = 1;
+        let min_height = 1;
+        let safe_width = width.max(min_width);
+        let safe_height = height.max(min_height);
+
+        if safe_width != width || safe_height != height {
+            println!(
+                "Warning: Clamped resize from {}x{} to {}x{}",
+                width, height, safe_width, safe_height
+            );
+        }
+
+        // Update configuration
+        self.config.width = safe_width;
+        self.config.height = safe_height;
+
+        // Reconfigure surface - this is critical for wgpu
         self.surface.configure(&self.device, &self.config);
 
+        // Recreate depth texture with new dimensions
         self.depth_texture =
             TextureResource::create_depth_texture(&self.device, &self.config, "depth_texture");
+
+        println!(
+            "Successfully resized render engine to {}x{}",
+            safe_width, safe_height
+        );
+    }
+
+    // NEW: Get current surface dimensions for ImGui sync
+    pub fn get_surface_size(&self) -> (u32, u32) {
+        (self.config.width, self.config.height)
     }
 
     pub fn device(&self) -> &wgpu::Device {

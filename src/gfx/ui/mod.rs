@@ -37,16 +37,28 @@ impl UiManager {
         let mut context = Context::create();
         context.set_ini_filename(None);
 
-        // Setup platform integration
+        // CRITICAL: Don't set display_size here - it will be set correctly later
+        println!(
+            "Creating UiManager - initial display_size will be set to [0.0, 0.0] as placeholder"
+        );
+
+        // Setup platform integration with FIXED DPI handling
         let mut platform = WinitPlatform::new(&mut context);
-        platform.attach_window(context.io_mut(), window, HiDpiMode::Default);
+        // CRITICAL: Use Locked mode to prevent automatic DPI scaling
+        // We'll handle the scaling manually by setting display_size to physical pixels
+        platform.attach_window(context.io_mut(), window, HiDpiMode::Locked(1.0));
 
-        // Setup fonts
+        // FIXED: Simplified font setup to avoid DPI scaling issues
         let hidpi_factor = window.scale_factor();
-        let font_size = (12.0 * hidpi_factor) as f32; // Increased from 13.0
-        context.io_mut().font_global_scale = (1.0 / hidpi_factor) as f32;
+        println!("Window scale factor: {}", hidpi_factor);
 
-        // Option 1: Use a built-in font with different size
+        // Use a reasonable base font size that works across different DPI settings
+        let font_size = 24.0; // Fixed size, let the platform handle DPI scaling
+
+        // IMPORTANT: Don't set font_global_scale manually - let imgui-winit-support handle it
+        // The HiDpiMode::Default should handle this automatically
+
+        // Setup fonts with consistent sizing
         context.fonts().add_font(&[FontSource::DefaultFontData {
             config: Some(FontConfig {
                 oversample_h: 1,
@@ -75,6 +87,11 @@ impl UiManager {
         };
         let renderer = Renderer::new(&mut context, device, queue, renderer_config);
 
+        println!(
+            "UiManager created - display_size: {:?}",
+            context.io().display_size
+        );
+
         Self {
             context,
             platform,
@@ -82,6 +99,30 @@ impl UiManager {
             last_frame: Instant::now(),
             last_cursor: None,
         }
+    }
+
+    /// CRITICAL: Update ImGui's display size to match render target
+    pub fn update_display_size(&mut self, width: u32, height: u32) {
+        let old_size = self.context.io().display_size;
+        self.context.io_mut().display_size = [width as f32, height as f32];
+        println!(
+            "UiManager: Updated ImGui display size from [{:.0}, {:.0}] to [{}x{}]",
+            old_size[0], old_size[1], width, height
+        );
+
+        // Debug: Verify the change took effect
+        let new_size = self.context.io().display_size;
+        if new_size[0] != width as f32 || new_size[1] != height as f32 {
+            println!(
+                "WARNING: Display size update failed! Expected [{}x{}], got [{:.0}, {:.0}]",
+                width, height, new_size[0], new_size[1]
+            );
+        }
+    }
+
+    /// Get current ImGui display size for debugging
+    pub fn get_display_size(&self) -> [f32; 2] {
+        self.context.io().display_size
     }
 
     pub fn handle_input<T>(&mut self, window: &Window, event: &Event<T>) -> bool {
@@ -119,10 +160,28 @@ impl UiManager {
             .update_delta_time(now - self.last_frame);
         self.last_frame = now;
 
+        // Debug display size before frame preparation
+        let display_size = self.context.io().display_size;
+        if display_size[0] == 0.0 || display_size[1] == 0.0 {
+            println!(
+                "WARNING: ImGui display_size is zero: [{}, {}]",
+                display_size[0], display_size[1]
+            );
+        }
+
         // Prepare frame
         self.platform
             .prepare_frame(self.context.io_mut(), window)
             .expect("Failed to prepare frame");
+
+        // Debug display size after frame preparation (platform might modify it)
+        let display_size_after = self.context.io().display_size;
+        if display_size != display_size_after {
+            println!(
+                "Display size changed during prepare_frame: [{:.0}, {:.0}] -> [{:.0}, {:.0}]",
+                display_size[0], display_size[1], display_size_after[0], display_size_after[1]
+            );
+        }
 
         // Create UI frame and run logic
         let ui = self.context.frame();
@@ -149,6 +208,15 @@ impl UiManager {
     ) {
         // Get the draw data from the last frame
         let draw_data = self.context.render();
+
+        // Debug: Check draw data validity
+        if draw_data.display_size[0] <= 0.0 || draw_data.display_size[1] <= 0.0 {
+            println!(
+                "ERROR: Invalid draw_data display_size: [{}, {}]",
+                draw_data.display_size[0], draw_data.display_size[1]
+            );
+            return; // Skip rendering to avoid scissor rect error
+        }
 
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {

@@ -11,7 +11,8 @@ pub struct Mesh {
     indices: Vec<u32>,
     vertex_buffer: Option<wgpu::Buffer>,
     index_buffer: Option<wgpu::Buffer>,
-    index_count: u32,
+    pub index_count: u32,
+    pub vertex_count: u32,
 }
 
 impl Mesh {
@@ -26,6 +27,7 @@ impl Mesh {
                 normal: [normals[i * 3], normals[i * 3 + 1], normals[i * 3 + 2]],
             });
         }
+        let vertex_count = vertices.len() as u32 / 3;
 
         Self {
             vertices,
@@ -33,6 +35,7 @@ impl Mesh {
             vertex_buffer: None,
             index_buffer: None,
             index_count,
+            vertex_count,
         }
     }
 

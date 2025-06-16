@@ -130,7 +130,12 @@ impl ApplicationHandler for AppState {
             let window_handle = Arc::new(window);
             self.window = Some(window_handle.clone());
 
-            let (width, height) = window_handle.inner_size().into();
+            // CRITICAL: Use physical size for render engine, not logical size
+            let physical_size = window_handle.inner_size();
+            let (width, height) = (physical_size.width, physical_size.height);
+
+            println!("Window created - Physical size: {}x{}", width, height);
+            println!("Window scale factor: {}", window_handle.scale_factor());
 
             let window_clone = window_handle.clone();
             let renderer =
@@ -143,11 +148,21 @@ impl ApplicationHandler for AppState {
             // *** ADD THIS: Update all transforms after GPU initialization ***
             self.scene.update_all_transforms(renderer.queue());
 
-            let ui_manager = UiManager::new(
+            // CRITICAL: Create UI manager with correct surface dimensions
+            let mut ui_manager = UiManager::new(
                 renderer.device(),
                 renderer.queue(),
                 renderer.surface_format(),
                 &window_handle,
+            );
+
+            // CRITICAL: Set ImGui display size to match actual surface size
+            let (surface_width, surface_height) = renderer.get_surface_size();
+            ui_manager.update_display_size(surface_width, surface_height);
+
+            println!(
+                "Initialized ImGui with surface size: {}x{}",
+                surface_width, surface_height
             );
 
             self.ui_manager = Some(ui_manager);
@@ -202,12 +217,55 @@ impl ApplicationHandler for AppState {
                 //     }
                 // }
             }
+            // FIXED: Proper resize handling
             WindowEvent::Resized(PhysicalSize { width, height }) => {
+                println!("Window resized to: {}x{}", width, height);
+
+                // Update camera projection first
                 self.scene
                     .camera_manager
                     .camera
                     .resize_projection(width, height);
+
+                // Resize render engine (this validates dimensions)
                 render_engine.resize(width, height);
+
+                // CRITICAL: Update ImGui display size to match actual surface size
+                if let Some(ui_manager) = self.ui_manager.as_mut() {
+                    let (actual_width, actual_height) = render_engine.get_surface_size();
+                    ui_manager.update_display_size(actual_width, actual_height);
+                    println!(
+                        "Updated ImGui display size to: {}x{}",
+                        actual_width, actual_height
+                    );
+                }
+            }
+            // ALSO HANDLE: Scale factor changes (important for high-DPI displays)
+            WindowEvent::ScaleFactorChanged {
+                scale_factor,
+                inner_size_writer: _,
+            } => {
+                println!("Scale factor changed to: {}", scale_factor);
+                let PhysicalSize { width, height } = window.inner_size();
+
+                // Update camera projection
+                self.scene
+                    .camera_manager
+                    .camera
+                    .resize_projection(width, height);
+
+                // Resize render engine
+                render_engine.resize(width, height);
+
+                // Update ImGui display size
+                if let Some(ui_manager) = self.ui_manager.as_mut() {
+                    let (actual_width, actual_height) = render_engine.get_surface_size();
+                    ui_manager.update_display_size(actual_width, actual_height);
+                    println!(
+                        "Updated ImGui display size after scale change: {}x{}",
+                        actual_width, actual_height
+                    );
+                }
             }
             WindowEvent::CloseRequested => {
                 event_loop.exit();
