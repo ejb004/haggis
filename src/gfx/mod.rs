@@ -1,10 +1,14 @@
+// src/gfx/mod.rs
+//! Graphics rendering system
+//!
+//! Contains all graphics-related functionality including cameras, rendering,
+//! scene management, and resource handling.
+
 pub mod camera;
-mod global_bindings;
-pub mod material;
-pub mod object;
-pub mod pipeline_manager;
-pub mod render_engine;
+pub mod rendering;
+pub mod resources;
 pub mod scene;
-pub mod texture_resource;
-pub mod ui;
-mod vertex;
+
+// Re-export commonly used types
+pub use camera::orbit_camera::OrbitCamera;
+pub use rendering::render_engine::RenderEngine;

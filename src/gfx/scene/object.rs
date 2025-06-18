@@ -2,7 +2,7 @@ use std::ops::Range;
 
 use wgpu::Device;
 
-use crate::app::HaggisApp;
+use crate::{app::HaggisApp, gfx::resources::material::MaterialId};
 
 use super::vertex::Vertex3D;
 
@@ -27,7 +27,7 @@ impl Mesh {
                 normal: [normals[i * 3], normals[i * 3 + 1], normals[i * 3 + 2]],
             });
         }
-        let vertex_count = vertices.len() as u32 / 3;
+        let vertex_count = vertices.len() as u32;
 
         Self {
             vertices,
@@ -41,7 +41,7 @@ impl Mesh {
 
     // Helper function to calculate face normals if OBJ doesn't have them
     pub fn calculate_face_normals(positions: &[f32], indices: &[u32]) -> Vec<f32> {
-        println!("please no normals no!!!");
+        println!("Calculating face normals...");
         let vertex_count = positions.len() / 3;
         let mut normals = vec![0.0; positions.len()]; // Same length as positions
         let mut counts = vec![0; vertex_count]; // Count contributions per vertex
@@ -114,7 +114,7 @@ impl Mesh {
 
 use cgmath::{Deg, Matrix4, SquareMatrix, Vector3};
 
-// 1. Create a builder struct that holds a reference to the app and the object index
+/// Builder struct for configuring objects with fluent API
 pub struct ObjectBuilder<'a> {
     app: &'a mut HaggisApp,
     object_index: usize,
@@ -125,64 +125,76 @@ impl<'a> ObjectBuilder<'a> {
         Self { app, object_index }
     }
 
+    /// Sets transform with position, scale, and Y rotation
     pub fn with_transform(self, position: [f32; 3], scale: f32, rotation_y: f32) -> Self {
-        // Apply transform to the object
         if let Some(object) = self.app.app_state.scene.objects.get_mut(self.object_index) {
-            use cgmath::{Deg, Vector3};
-
             object.set_transform_trs(
                 Vector3::new(position[0], position[1], position[2]),
                 Deg(rotation_y),
                 scale,
             );
+
+            // Sync the transform to UI state so UI controls show correct values
+            object.sync_transform_to_ui();
         }
         self
     }
 
+    /// Sets only the position
     pub fn with_position(self, position: [f32; 3]) -> Self {
         if let Some(object) = self.app.app_state.scene.objects.get_mut(self.object_index) {
-            use cgmath::Vector3;
             object.set_translation(Vector3::new(position[0], position[1], position[2]));
+            object.sync_transform_to_ui();
         }
         self
     }
 
+    /// Sets only the scale
     pub fn with_scale(self, scale: f32) -> Self {
         if let Some(object) = self.app.app_state.scene.objects.get_mut(self.object_index) {
             object.set_scale(scale);
+            object.sync_transform_to_ui();
         }
         self
     }
 
+    /// Sets only the Y rotation
     pub fn with_rotation_y(self, rotation_y: f32) -> Self {
         if let Some(object) = self.app.app_state.scene.objects.get_mut(self.object_index) {
-            use cgmath::Deg;
             object.set_rotation_y(Deg(rotation_y));
+            object.sync_transform_to_ui();
         }
         self
     }
 
+    /// Sets XYZ rotation
     pub fn with_rotation_xyz(self, rotation: [f32; 3]) -> Self {
         if let Some(object) = self.app.app_state.scene.objects.get_mut(self.object_index) {
-            use cgmath::Deg;
             object.reset_transform();
             object.rotate_x(Deg(rotation[0]));
             object.rotate_y(Deg(rotation[1]));
             object.rotate_z(Deg(rotation[2]));
+            object.sync_transform_to_ui();
+        }
+        self
+    }
+
+    /// Sets the material for this object
+    pub fn with_material(self, material_id: &str) -> Self {
+        if let Some(object) = self.app.app_state.scene.objects.get_mut(self.object_index) {
+            object.set_material(material_id);
         }
         self
     }
 }
 
-// GPU resources struct to hold all uniform buffers and bind groups
+/// GPU resources struct to hold all uniform buffers and bind groups
 pub struct ObjectGpuResources {
     pub transform_buffer: wgpu::Buffer,
     pub transform_bind_group: wgpu::BindGroup,
-    // Future material support
-    pub material_buffer: Option<wgpu::Buffer>,
-    pub material_bind_group: Option<wgpu::BindGroup>,
 }
 
+/// UI transform state for interactive editing
 #[derive(Clone)]
 pub struct UiTransformState {
     pub position: [f32; 3],
@@ -200,18 +212,23 @@ impl Default for UiTransformState {
     }
 }
 
+/// 3D object containing meshes, transform, and material reference
 pub struct Object {
     pub meshes: Vec<Mesh>,
-    pub transform: Matrix4<f32>, // cgmath 4x4 transformation matrix
-    pub gpu_resources: Option<ObjectGpuResources>, // None until init_gpu_resources called
+    pub transform: Matrix4<f32>,
+    pub gpu_resources: Option<ObjectGpuResources>,
 
+    // Object properties
     pub name: String,
     pub ui_transform: UiTransformState,
     pub visible: bool,
+
+    // Material reference (stored as ID, actual material is in MaterialManager)
+    pub material_id: Option<MaterialId>,
 }
 
 impl Object {
-    /// Create a new Object with identity transformation
+    /// Creates a new Object with identity transformation
     pub fn new(meshes: Vec<Mesh>) -> Self {
         Self {
             meshes,
@@ -220,17 +237,38 @@ impl Object {
             name: "Object".to_string(),
             ui_transform: UiTransformState::default(),
             visible: true,
+            material_id: None, // No material assigned initially (will use default)
         }
     }
 
+    /// Sets the object name
     pub fn set_name(&mut self, name: String) {
         self.name = name;
     }
 
-    /// Apply UI transform state to the actual transform matrix
-    pub fn apply_ui_transform(&mut self) {
-        use cgmath::{Deg, Vector3};
+    /// Sets the material for this object
+    ///
+    /// # Arguments
+    /// * `material_id` - ID of the material to assign
+    pub fn set_material(&mut self, material_id: &str) {
+        self.material_id = Some(material_id.to_string());
+    }
 
+    /// Gets the material ID for this object
+    ///
+    /// # Returns
+    /// Optional reference to the material ID
+    pub fn get_material_id(&self) -> Option<&MaterialId> {
+        self.material_id.as_ref()
+    }
+
+    /// Removes material assignment (will use default material)
+    pub fn clear_material(&mut self) {
+        self.material_id = None;
+    }
+
+    /// Applies UI transform state to the actual transform matrix
+    pub fn apply_ui_transform(&mut self) {
         self.reset_transform();
 
         // Apply TRS from UI state
@@ -249,7 +287,7 @@ impl Object {
         self.rotate_z(Deg(self.ui_transform.rotation[2]));
     }
 
-    /// Sync current transform matrix back to UI state (for initialization)
+    /// Syncs current transform matrix back to UI state (for initialization)
     pub fn sync_transform_to_ui(&mut self) {
         // Extract translation from transform matrix
         let transform_data: &[f32; 16] = self.transform.as_ref();
@@ -257,67 +295,79 @@ impl Object {
         self.ui_transform.position[1] = transform_data[13];
         self.ui_transform.position[2] = transform_data[14];
 
-        // Extract scale (assuming uniform scale)
+        // Extract scale (assuming uniform scale from X component)
         let scale_x =
             (transform_data[0].powi(2) + transform_data[1].powi(2) + transform_data[2].powi(2))
                 .sqrt();
         self.ui_transform.scale = scale_x;
 
-        // Note: Extracting rotation from matrix is complex, so we'll keep it simple for now
-        // Rotations will start at 0 when UI is opened
+        // Extract Y rotation (this is an approximation for simple Y rotations)
+        // For more complex rotations, this won't be perfect but will work for your use case
+        if scale_x > 0.0 {
+            let normalized_x = transform_data[0] / scale_x;
+            let normalized_z = transform_data[8] / scale_x;
+            self.ui_transform.rotation[1] = normalized_z.atan2(normalized_x).to_degrees();
+        }
+
+        // For X and Z rotations, we'll leave them at 0 since extracting them
+        // from a matrix is complex and you're mainly using Y rotation
+        self.ui_transform.rotation[0] = 0.0;
+        self.ui_transform.rotation[2] = 0.0;
     }
 
-    /// Set translation
+    // Transform methods
+
+    /// Sets translation
     pub fn set_translation(&mut self, translation: Vector3<f32>) {
         self.transform = Matrix4::from_translation(translation);
     }
 
-    /// Apply translation (multiplies with existing transform)
+    /// Applies translation (multiplies with existing transform)
     pub fn translate(&mut self, translation: Vector3<f32>) {
         self.transform = self.transform * Matrix4::from_translation(translation);
     }
 
-    /// Set uniform scale
+    /// Sets uniform scale
     pub fn set_scale(&mut self, scale: f32) {
         self.transform = Matrix4::from_scale(scale);
     }
 
-    /// Set non-uniform scale
+    /// Sets non-uniform scale
     pub fn set_scale_xyz(&mut self, scale: Vector3<f32>) {
         self.transform = Matrix4::from_nonuniform_scale(scale.x, scale.y, scale.z);
     }
 
-    /// Set rotation around X axis
+    /// Sets rotation around X axis
     pub fn set_rotation_x(&mut self, angle: Deg<f32>) {
         self.transform = Matrix4::from_angle_x(angle);
     }
 
-    /// Set rotation around Y axis
+    /// Sets rotation around Y axis
     pub fn set_rotation_y(&mut self, angle: Deg<f32>) {
         self.transform = Matrix4::from_angle_y(angle);
     }
 
-    /// Set rotation around Z axis
+    /// Sets rotation around Z axis
     pub fn set_rotation_z(&mut self, angle: Deg<f32>) {
         self.transform = Matrix4::from_angle_z(angle);
     }
 
-    /// Apply rotation around X axis
+    /// Applies rotation around X axis
     pub fn rotate_x(&mut self, angle: Deg<f32>) {
         self.transform = self.transform * Matrix4::from_angle_x(angle);
     }
 
-    /// Apply rotation around Y axis
+    /// Applies rotation around Y axis
     pub fn rotate_y(&mut self, angle: Deg<f32>) {
         self.transform = self.transform * Matrix4::from_angle_y(angle);
     }
 
-    /// Apply rotation around Z axis
+    /// Applies rotation around Z axis
     pub fn rotate_z(&mut self, angle: Deg<f32>) {
         self.transform = self.transform * Matrix4::from_angle_z(angle);
     }
 
-    /// Create a complete transform from translation, rotation, and scale
+    /// Creates a complete transform from translation, rotation, and scale
     pub fn set_transform_trs(
         &mut self,
         translation: Vector3<f32>,
@@ -330,12 +380,12 @@ impl Object {
         self.transform = t * r * s; // Order matters: T * R * S
     }
 
-    /// Reset to identity matrix
+    /// Resets to identity matrix
     pub fn reset_transform(&mut self) {
         self.transform = Matrix4::identity();
     }
 
-    /// Update the transformation matrix and sync to GPU if resources exist
+    /// Updates the transformation matrix and syncs to GPU if resources exist
     pub fn update_transform(&mut self, queue: &wgpu::Queue) {
         if let Some(gpu_resources) = &self.gpu_resources {
             // cgmath matrices are column-major, which is what GPU expects
@@ -349,18 +399,17 @@ impl Object {
         }
     }
 
-    /// Get the transform bind group for rendering
+    /// Gets the transform bind group for rendering
     pub fn get_transform_bind_group(&self) -> Option<&wgpu::BindGroup> {
         self.gpu_resources
             .as_ref()
             .map(|res| &res.transform_bind_group)
     }
 
+    /// Initializes GPU resources for this object
     pub fn init_gpu_resources(&mut self, device: &Device) {
-        println!("=== GPU BUFFER CREATION DEBUG ===");
-
         // Initialize mesh buffers
-        for (mesh_idx, mesh) in self.meshes.iter_mut().enumerate() {
+        for mesh in self.meshes.iter_mut() {
             let vertex_bytes = bytemuck::cast_slice(&mesh.vertices);
             let index_bytes = bytemuck::cast_slice(&mesh.indices);
 
@@ -384,14 +433,9 @@ impl Object {
 
             mesh.vertex_buffer = Some(vertex_buffer);
             mesh.index_buffer = Some(index_buffer);
-
-            println!("  ✓ Buffers created successfully");
         }
 
         // Create transform uniform buffer and bind group
-        println!("Creating transform uniform resources...");
-
-        // cgmath matrices are already column-major for GPU
         let transform_data: &[f32; 16] = self.transform.as_ref();
 
         let transform_buffer = wgpu::util::DeviceExt::create_buffer_init(
@@ -431,12 +475,11 @@ impl Object {
         self.gpu_resources = Some(ObjectGpuResources {
             transform_buffer,
             transform_bind_group,
-            material_buffer: None,
-            material_bind_group: None,
         });
     }
 }
 
+/// Trait for drawing objects and meshes
 pub trait DrawObject<'a> {
     fn draw_mesh(&mut self, mesh: &'a Mesh);
     fn draw_mesh_instanced(&mut self, mesh: &'a Mesh, instances: Range<u32>);
@@ -472,11 +515,12 @@ where
     }
 
     fn draw_object_instanced(&mut self, object: &'b Object, instances: Range<u32>) {
-        // IMPORTANT: Bind transform for this object (Group 1) before drawing meshes
+        // Bind transform for this object (bind group slot 1)
         if let Some(gpu_resources) = &object.gpu_resources {
             self.set_bind_group(1, &gpu_resources.transform_bind_group, &[]);
         }
 
+        // Draw all meshes
         for mesh in &object.meshes {
             self.draw_mesh_instanced(mesh, instances.clone());
         }

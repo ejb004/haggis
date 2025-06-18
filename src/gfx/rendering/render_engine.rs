@@ -1,21 +1,30 @@
-use std::{iter, os::unix::fs::PermissionsExt, sync::Arc};
+//! WGPU-based rendering engine for the Haggis 3D engine
+//!
+//! Provides high-level rendering functionality built on top of wgpu, including
+//! pipeline management, depth testing, and UI overlay support.
 
-use cgmath::num_traits::PrimInt;
-use wgpu::{
-    BindGroupLayout, Buffer, DepthStencilState, Device, FrontFace, RenderPipeline, TextureFormat,
-    TextureUsages,
-};
+use std::{iter, sync::Arc};
+use wgpu::{Device, TextureFormat};
 
-use super::{
+use crate::gfx::{
     camera::camera_utils::CameraUniform,
-    global_bindings::{update_global_ubo, GlobalBindings, GlobalUBO},
-    object::DrawObject,
-    pipeline_manager::{self, PipelineConfig, PipelineManager},
-    scene::Scene,
-    texture_resource::TextureResource,
-    vertex::*,
+    resources::{
+        global_bindings::{update_global_ubo, GlobalBindings, GlobalUBO},
+        texture_resource::TextureResource,
+    },
+    scene::{object::DrawObject, scene::Scene},
 };
 
+use super::pipeline_manager::{PipelineConfig, PipelineManager};
+
+/// Core rendering engine managing GPU resources and draw calls
+///
+/// The RenderEngine handles all low-level graphics operations including:
+/// - Surface and device management
+/// - Pipeline creation and management  
+/// - Depth buffer handling
+/// - Camera uniform updates
+/// - UI overlay rendering
 pub struct RenderEngine {
     surface: wgpu::Surface<'static>,
     device: Arc<wgpu::Device>,
@@ -23,14 +32,27 @@ pub struct RenderEngine {
     config: wgpu::SurfaceConfiguration,
     depth_texture: TextureResource,
     format: TextureFormat,
-
     pub pipeline_manager: PipelineManager,
-
     global_ubo: GlobalUBO,
     global_bindings: GlobalBindings,
 }
 
 impl RenderEngine {
+    /// Creates a new render engine for the given window
+    ///
+    /// Initializes wgpu with default settings, creates a depth buffer,
+    /// and sets up the default PBR rendering pipeline.
+    ///
+    /// # Arguments
+    /// * `window` - Window surface target for rendering
+    /// * `width` - Initial surface width in pixels
+    /// * `height` - Initial surface height in pixels
+    ///
+    /// # Returns
+    /// Configured RenderEngine ready for rendering
+    ///
+    /// # Panics
+    /// Panics if unable to create wgpu adapter or device
     pub async fn new(
         window: impl Into<wgpu::SurfaceTarget<'static>>,
         width: u32,
@@ -57,7 +79,7 @@ impl RenderEngine {
                     label: Some("WGPU Device"),
                     required_features: wgpu::Features::default(),
                     required_limits: wgpu::Limits {
-                        max_texture_dimension_2d: 4096, // Allow higher resolutions on native
+                        max_texture_dimension_2d: 4096,
                         ..wgpu::Limits::downlevel_defaults()
                     },
                     memory_hints: wgpu::MemoryHints::default(),
@@ -77,7 +99,7 @@ impl RenderEngine {
 
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            format: format,
+            format,
             width,
             height,
             present_mode: surface_capabilities.present_modes[0],
@@ -89,13 +111,12 @@ impl RenderEngine {
         let depth_texture =
             TextureResource::create_depth_texture(&device, &config, "depth_texture");
 
-        // GLOBAL UNIFORMS - CAMERA ETC, NEED FOR PIPELINES
-
+        // Initialize global uniform bindings for camera and lighting
         let global_ubo = GlobalUBO::new(&device);
         let mut global_bindings = GlobalBindings::new(&device);
         global_bindings.create_bind_group(&device, &global_ubo);
 
-        // Create transform bind group layout
+        // Create transform bind group layout for per-object transforms
         let transform_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("Transform Bind Group Layout"),
@@ -111,11 +132,26 @@ impl RenderEngine {
                 }],
             });
 
-        let device_handle: Arc<Device> = device.into();
+        let material_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Material Bind Group Layout"),
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+            });
 
+        let device_handle: Arc<Device> = device.into();
         let mut pipeline_manager = PipelineManager::new(device_handle.clone());
 
-        let _ = pipeline_manager.load_shader("default", include_str!("shader.wgsl"));
+        // Load default PBR shader and create pipeline
+        let _ = pipeline_manager.load_shader("default", include_str!("pbr.wgsl"));
 
         pipeline_manager.register_pipeline(
             "PBR",
@@ -124,7 +160,8 @@ impl RenderEngine {
                 .with_depth_stencil(depth_texture.texture.clone())
                 .with_bind_group_layouts(vec![
                     global_bindings.bind_group_layouts().clone(),
-                    transform_bind_group_layout, // Add transform layout
+                    transform_bind_group_layout,
+                    material_bind_group_layout,
                 ]),
         );
 
@@ -137,34 +174,29 @@ impl RenderEngine {
             surface,
             queue: queue.into(),
             depth_texture,
-
             pipeline_manager,
-
             global_bindings,
             global_ubo,
         }
     }
 
+    /// Renders a frame with only 3D scene content
+    ///
+    /// Clears the color and depth buffers, then renders all visible objects
+    /// in the scene using the default PBR pipeline.
+    ///
+    /// # Arguments
+    /// * `scene` - Scene containing objects to render
     pub fn render_frame(&mut self, scene: &Scene) {
         let surface_texture = self
             .surface
             .get_current_texture()
             .expect("Failed to get surface texture!");
 
-        let surface_texture_view =
-            surface_texture
-                .texture
-                .create_view(&wgpu::TextureViewDescriptor {
-                    label: wgpu::Label::default(),
-                    aspect: wgpu::TextureAspect::default(),
-                    format: Some(self.format),
-                    dimension: None,
-                    base_mip_level: 0,
-                    mip_level_count: None,
-                    base_array_layer: 0,
-                    array_layer_count: None,
-                    usage: None,
-                });
+        let surface_texture_view = surface_texture
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -187,9 +219,7 @@ impl RenderEngine {
                         store: wgpu::StoreOp::Store,
                     },
                 })],
-                // depth_stencil_attachment: None,
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    //attach depth texture to stencil attatchement of render pass
                     view: &self.depth_texture.view,
                     depth_ops: Some(wgpu::Operations {
                         load: wgpu::LoadOp::Clear(1.0),
@@ -201,53 +231,39 @@ impl RenderEngine {
                 timestamp_writes: None,
             });
 
-            //global bindings
             render_pass.set_bind_group(0, self.global_bindings.bind_groups(), &[]);
-
-            // render_pass.set_pipeline(&self.pipeline);
-
-            // for object in scene.objects.iter() {
-            //     render_pass.draw_object(object);
-            // }
-
-            // self.pipeline_manager.list_pipelines_to_terminal();
 
             if let Some(pipeline) = self.pipeline_manager.get_pipeline("PBR") {
                 render_pass.set_pipeline(pipeline);
 
-                // Debug: Check each object's transform state
-                println!("=== RENDER DEBUG ===");
-                println!("Rendering {} objects", scene.objects.len());
+                // Debug material access during rendering
 
-                // Render all objects in the scene
-                for (i, object) in scene.objects.iter().enumerate() {
-                    println!(
-                        "Object {}: GPU resources: {}",
-                        i,
-                        object.gpu_resources.is_some()
-                    );
+                let default_material = scene.material_manager.get_default_material();
 
-                    if let Some(_gpu_resources) = &object.gpu_resources {
-                        // Print the transform matrix (translation components)
-                        let transform_data: &[f32; 16] = object.transform.as_ref();
-                        println!(
-                            "  Transform matrix translation: [{:.2}, {:.2}, {:.2}]",
-                            transform_data[12], transform_data[13], transform_data[14]
-                        );
-                        println!(
-                            "  Transform matrix scale: [{:.2}, {:.2}, {:.2}]",
-                            transform_data[0], transform_data[5], transform_data[10]
-                        );
-                    } else {
-                        println!("  ❌ No GPU resources - transform won't be applied!");
+                // Test get_bind_group directly
+                match default_material.get_bind_group() {
+                    Some(bind_group) => {
+                        render_pass.set_bind_group(2, bind_group, &[]);
+
+                        // Draw all objects with the same material
+                        for object in scene.objects.iter() {
+                            render_pass.draw_object(object);
+                        }
                     }
-
-                    render_pass.draw_object(object);
-                    println!("  ✓ Object {} rendered", i);
+                    None => {
+                        // Let's check ALL materials during render time
+                        for material_name in scene.material_manager.list_materials() {
+                            let material =
+                                scene.material_manager.get_material(material_name).unwrap();
+                            if !material.get_bind_group().is_some() {
+                                println!(
+                                    "  ❌ Material '{}' missing bind group during render",
+                                    material.name
+                                );
+                            }
+                        }
+                    }
                 }
-                println!("=== END RENDER DEBUG ===");
-            } else {
-                println!("❌ PBR pipeline not found!");
             }
         }
 
@@ -255,7 +271,17 @@ impl RenderEngine {
         surface_texture.present();
     }
 
-    // Method to render with UI callback
+    /// Renders a frame with 3D scene and UI overlay
+    ///
+    /// First renders the 3D scene to the color buffer, then calls the provided
+    /// UI callback to render interface elements on top.
+    ///
+    /// # Arguments
+    /// * `scene` - Scene containing 3D objects to render
+    /// * `ui_callback` - Function that renders UI elements using the command encoder
+    ///
+    /// # Type Parameters
+    /// * `F` - UI callback function signature
     pub fn render_frame_with_ui<F>(&mut self, scene: &Scene, ui_callback: F)
     where
         F: FnOnce(&wgpu::Device, &wgpu::Queue, &mut wgpu::CommandEncoder, &wgpu::TextureView),
@@ -265,20 +291,9 @@ impl RenderEngine {
             .get_current_texture()
             .expect("Failed to get surface texture!");
 
-        let surface_texture_view =
-            surface_texture
-                .texture
-                .create_view(&wgpu::TextureViewDescriptor {
-                    label: wgpu::Label::default(),
-                    aspect: wgpu::TextureAspect::default(),
-                    format: Some(self.format),
-                    dimension: None,
-                    base_mip_level: 0,
-                    mip_level_count: None,
-                    base_array_layer: 0,
-                    array_layer_count: None,
-                    usage: None,
-                });
+        let surface_texture_view = surface_texture
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
 
         let mut encoder = self
             .device
@@ -315,23 +330,35 @@ impl RenderEngine {
                 timestamp_writes: None,
             });
 
-            // Global bindings
             render_pass.set_bind_group(0, self.global_bindings.bind_groups(), &[]);
 
-            // Render scene with your existing pipeline
             if let Some(pipeline) = self.pipeline_manager.get_pipeline("PBR") {
                 render_pass.set_pipeline(pipeline);
 
-                // Render all objects in the scene
                 for object in scene.objects.iter() {
                     if object.visible {
-                        render_pass.draw_object(object);
+                        // Get the SPECIFIC material for THIS object
+                        let material = scene.get_material_for_object(object);
+
+                        if let Some(material_bind_group) = material.get_bind_group() {
+                            // Bind THIS object's material
+                            render_pass.set_bind_group(2, material_bind_group, &[]);
+
+                            // Draw with this material
+                            render_pass.draw_object(object);
+                        } else {
+                            println!(
+                                "Skipping '{}' - material '{}' has no GPU resources",
+                                object.name, material.name
+                            );
+                        }
                     }
                 }
             }
         }
 
-        // Call UI callback to render UI on top
+        // Render UI overlay on top of 3D scene
+
         ui_callback(
             &self.device,
             &self.queue,
@@ -339,70 +366,75 @@ impl RenderEngine {
             &surface_texture_view,
         );
 
-        // Submit commands and present
         self.queue.submit(std::iter::once(encoder.finish()));
         surface_texture.present();
     }
 
+    /// Updates camera uniform buffer
+    ///
+    /// Should be called each frame with updated camera data to ensure
+    /// correct view and projection matrices.
+    ///
+    /// # Arguments
+    /// * `camera_uniform` - Updated camera uniform data
     pub fn update(&mut self, camera_uniform: CameraUniform) {
         update_global_ubo(&mut self.global_ubo, &self.queue, camera_uniform);
     }
 
-    // FIXED: Proper resize handling with validation
+    /// Resizes the render engine surface and recreates depth buffer
+    ///
+    /// Validates dimensions and clamps to minimum viable size to prevent
+    /// crashes. Recreates the depth texture to match new dimensions.
+    ///
+    /// # Arguments
+    /// * `width` - New surface width in pixels
+    /// * `height` - New surface height in pixels
     pub fn resize(&mut self, width: u32, height: u32) {
-        // Validate dimensions - prevent zero or extremely small sizes
         if width == 0 || height == 0 {
-            println!(
-                "Warning: Attempted to resize to invalid dimensions: {}x{}",
-                width, height
-            );
             return;
         }
 
-        // Additional safety check for reasonable minimum size
-        let min_width = 1;
-        let min_height = 1;
-        let safe_width = width.max(min_width);
-        let safe_height = height.max(min_height);
+        let safe_width = width.max(1);
+        let safe_height = height.max(1);
 
-        if safe_width != width || safe_height != height {
-            println!(
-                "Warning: Clamped resize from {}x{} to {}x{}",
-                width, height, safe_width, safe_height
-            );
-        }
-
-        // Update configuration
         self.config.width = safe_width;
         self.config.height = safe_height;
 
-        // Reconfigure surface - this is critical for wgpu
+        // Reconfigure surface with new dimensions
         self.surface.configure(&self.device, &self.config);
 
-        // Recreate depth texture with new dimensions
+        // Recreate depth texture to match new surface size
         self.depth_texture =
             TextureResource::create_depth_texture(&self.device, &self.config, "depth_texture");
-
-        println!(
-            "Successfully resized render engine to {}x{}",
-            safe_width, safe_height
-        );
     }
 
-    // NEW: Get current surface dimensions for ImGui sync
+    /// Returns current surface dimensions
+    ///
+    /// Used for UI scaling and camera aspect ratio calculations.
+    ///
+    /// # Returns
+    /// Tuple of (width, height) in pixels
     pub fn get_surface_size(&self) -> (u32, u32) {
         (self.config.width, self.config.height)
     }
 
+    /// Returns reference to the wgpu device
+    ///
+    /// Used for creating GPU resources like buffers and textures.
     pub fn device(&self) -> &wgpu::Device {
         &self.device
     }
 
+    /// Returns reference to the wgpu command queue
+    ///
+    /// Used for submitting GPU commands and updating buffers.
     pub fn queue(&self) -> &wgpu::Queue {
         &self.queue
     }
 
-    // Method to expose the surface format for UI manager creation
+    /// Returns the surface texture format
+    ///
+    /// Used for creating compatible render targets and UI systems.
     pub fn surface_format(&self) -> wgpu::TextureFormat {
         self.format
     }

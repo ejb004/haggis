@@ -1,3 +1,8 @@
+//! Haggis Engine - Main Application Module
+//!
+//! This module contains the core application structure and event handling for the Haggis 3D engine.
+//! Built on top of winit for windowing, wgpu for graphics, and imgui for UI.
+
 use cgmath::Vector3;
 use std::sync::Arc;
 use winit::{
@@ -8,44 +13,73 @@ use winit::{
     window::{Window, WindowAttributes},
 };
 
-use crate::gfx::{
-    camera::{
-        camera_controller::CameraController, camera_utils::CameraManager, orbit_camera::OrbitCamera,
+use crate::{
+    gfx::{
+        camera::{
+            camera_controller::CameraController, camera_utils::CameraManager,
+            orbit_camera::OrbitCamera,
+        },
+        rendering::render_engine::RenderEngine,
+        scene::{object::ObjectBuilder, scene::Scene},
     },
-    object::ObjectBuilder,
-    render_engine::RenderEngine,
-    scene::Scene,
     ui::UiManager,
 };
 
-// UI callback type
+/// UI callback function signature
+///
+/// Provides access to:
+/// - `ui`: ImGui UI context for drawing interface elements
+/// - `scene`: Mutable reference to the 3D scene for object manipulation
+/// - `selected_index`: Currently selected object index for UI focus
 pub type UiCallback = Box<dyn Fn(&imgui::Ui, &mut Scene, &mut Option<usize>) + Send + Sync>;
 
+/// Main Haggis application struct
+///
+/// Manages the application lifecycle, window creation, and rendering loop.
+/// Uses the builder pattern for configuration before running.
+///
+/// # Example
+/// ```rust
+/// let mut app = haggis::default();
+/// app.add_object("model.obj").with_transform([0.0, 0.0, 0.0], 1.0, 0.0);
+/// app.set_ui(|ui, scene, selected| {
+///     ui.text("Hello, Haggis!");
+/// });
+/// app.run();
+/// ```
 pub struct HaggisApp {
     event_loop: Option<EventLoop<()>>,
     pub app_state: AppState,
 }
 
+/// Internal application state
+///
+/// Contains all runtime state including graphics resources, scene data,
+/// and UI management. Separated from HaggisApp to implement ApplicationHandler.
 pub struct AppState {
     window: Option<Arc<Window>>,
-    render_engine: Option<RenderEngine>,
+    pub render_engine: Option<RenderEngine>,
     ui_manager: Option<UiManager>,
-
     pub scene: Scene,
     pub ui_callback: Option<UiCallback>,
-
     selected_object_index: Option<usize>,
 }
 
 impl HaggisApp {
-    /// Create a new Haggis application with default settings
+    /// Creates a new Haggis application with default settings
+    ///
+    /// Sets up a default orbit camera positioned 5 units from origin,
+    /// with reasonable sensitivity and zoom limits.
+    ///
+    /// # Returns
+    /// A configured HaggisApp ready for object addition and UI setup
     pub async fn new() -> Self {
         let event_loop = EventLoop::new().expect("Failed to create event loop");
 
+        // Configure default orbit camera
         let mut camera = OrbitCamera::new(5.0, 0.4, 0.2, Vector3::new(0.0, 0.0, 0.0), 1.0);
         camera.bounds.min_distance = Some(1.1);
         let controller = CameraController::new(0.005, 0.1);
-
         let camera_manager = CameraManager::new(camera, controller);
         let scene = Scene::new(camera_manager);
 
@@ -62,14 +96,22 @@ impl HaggisApp {
         }
     }
 
-    /// Set UI callback
-    // pub fn set_ui<F>(&mut self, ui_fn: F)
-    // where
-    //     F: Fn(&imgui::Ui) + Send + Sync + 'static,
-    // {
-    //     self.app_state.ui_callback = Some(Box::new(ui_fn));
-    // }
-
+    /// Sets the UI callback function
+    ///
+    /// The callback is called every frame during the UI update phase,
+    /// allowing dynamic interface creation and scene manipulation.
+    ///
+    /// # Arguments
+    /// * `ui_fn` - Function that receives UI context, scene, and selection state
+    ///
+    /// # Example
+    /// ```rust
+    /// app.set_ui(|ui, scene, selected| {
+    ///     ui.window("Controls").build(|| {
+    ///         ui.text("Object count: {}", scene.objects.len());
+    ///     });
+    /// });
+    /// ```
     pub fn set_ui<F>(&mut self, ui_fn: F)
     where
         F: Fn(&imgui::Ui, &mut Scene, &mut Option<usize>) + Send + Sync + 'static,
@@ -77,11 +119,14 @@ impl HaggisApp {
         self.app_state.ui_callback = Some(Box::new(ui_fn));
     }
 
-    /// Run the application (consumes self and starts the event loop)
+    /// Runs the application
+    ///
+    /// Consumes the HaggisApp and starts the main event loop.
+    /// This function will block until the application is closed.
+    ///
+    /// # Panics
+    /// Panics if the event loop fails to start or if called multiple times
     pub fn run(mut self) {
-        // Move UI callback to app_state
-        self.app_state.ui_callback = self.app_state.ui_callback.take();
-
         let event_loop = self.event_loop.take().expect("Event loop already consumed");
         event_loop.set_control_flow(ControlFlow::Poll);
 
@@ -90,13 +135,27 @@ impl HaggisApp {
             .expect("Failed to run event loop");
     }
 
+    /// Adds a 3D object to the scene with builder pattern
+    ///
+    /// Returns an ObjectBuilder for method chaining to set transform,
+    /// materials, and other properties.
+    ///
+    /// # Arguments
+    /// * `object_path` - Path to the 3D model file (OBJ format supported)
+    ///
+    /// # Returns
+    /// ObjectBuilder for configuring the added object
+    ///
+    /// # Example
+    /// ```rust
+    /// app.add_object("models/cube.obj")
+    ///     .with_transform([2.0, 0.0, 0.0], 1.5, 45.0);
+    /// ```
     pub fn add_object(&mut self, object_path: &str) -> ObjectBuilder {
         let object_index = self.app_state.scene.objects.len();
-
-        // Add the object to scene
         self.app_state.scene.add_object(object_path);
 
-        // Set the object name from file path
+        // Extract object name from file path for UI display
         if let Some(object) = self.app_state.scene.objects.get_mut(object_index) {
             let object_name = std::path::Path::new(object_path)
                 .file_stem()
@@ -104,21 +163,27 @@ impl HaggisApp {
                 .unwrap_or("Object")
                 .to_string();
             object.set_name(object_name);
-
-            // Sync current transform to UI state
             object.sync_transform_to_ui();
         }
 
         ObjectBuilder::new(self, object_index)
     }
 
-    // Keep the old method for backwards compatibility
+    /// Adds a 3D object without builder pattern (legacy compatibility)
+    ///
+    /// # Arguments
+    /// * `object_path` - Path to the 3D model file
     pub fn add_object_simple(&mut self, object_path: &str) {
         self.app_state.scene.add_object(object_path);
     }
 }
 
 impl ApplicationHandler for AppState {
+    /// Called when the application is resumed or first started
+    ///
+    /// Handles window creation and graphics initialization.
+    /// Sets up the wgpu render engine and ImGui UI system.
+
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.window.is_some() {
             return;
@@ -130,7 +195,7 @@ impl ApplicationHandler for AppState {
             let window_handle = Arc::new(window);
             self.window = Some(window_handle.clone());
 
-            // CRITICAL: Use physical size for render engine, not logical size
+            // Use physical size for render engine, not logical size
             let physical_size = window_handle.inner_size();
             let (width, height) = (physical_size.width, physical_size.height);
 
@@ -143,12 +208,18 @@ impl ApplicationHandler for AppState {
                     async move { RenderEngine::new(window_clone, width, height).await },
                 );
 
-            self.scene.init_gpu_resources(renderer.device());
+            // Initialize scene GPU resources (objects)
+            self.scene
+                .init_gpu_resources(renderer.device(), renderer.queue());
 
-            // *** ADD THIS: Update all transforms after GPU initialization ***
+            // Update all transforms after GPU initialization
             self.scene.update_all_transforms(renderer.queue());
 
-            // CRITICAL: Create UI manager with correct surface dimensions
+            // Force material update if needed
+            self.scene
+                .update_materials(renderer.device(), renderer.queue());
+
+            // Create UI manager with correct surface dimensions
             let mut ui_manager = UiManager::new(
                 renderer.device(),
                 renderer.queue(),
@@ -156,20 +227,19 @@ impl ApplicationHandler for AppState {
                 &window_handle,
             );
 
-            // CRITICAL: Set ImGui display size to match actual surface size
+            // Set ImGui display size to match actual surface size
             let (surface_width, surface_height) = renderer.get_surface_size();
             ui_manager.update_display_size(surface_width, surface_height);
-
-            println!(
-                "Initialized ImGui with surface size: {}x{}",
-                surface_width, surface_height
-            );
 
             self.ui_manager = Some(ui_manager);
             self.render_engine = Some(renderer);
         }
     }
 
+    /// Handles window-specific events
+    ///
+    /// Processes input, window resizing, and triggers rendering.
+    /// UI input is handled first to prevent camera movement when interacting with interface.
     fn window_event(
         &mut self,
         event_loop: &winit::event_loop::ActiveEventLoop,
@@ -184,14 +254,13 @@ impl ApplicationHandler for AppState {
             return;
         };
 
-        // Handle UI input first
+        // UI input handling takes precedence over camera controls
         if let Some(ui_manager) = self.ui_manager.as_mut() {
             let ui_event: winit::event::Event<()> = winit::event::Event::WindowEvent {
                 window_id,
                 event: event.clone(),
             };
             if ui_manager.handle_input(window, &ui_event) {
-                // UI consumed the event - request redraw and return early
                 window.request_redraw();
                 return;
             }
@@ -209,115 +278,80 @@ impl ApplicationHandler for AppState {
                 if matches!(key_code, winit::keyboard::KeyCode::Escape) {
                     event_loop.exit();
                 }
-                // If you have camera keyboard controls, add the UI check here too:
-                // if let Some(ui_manager) = self.ui_manager.as_ref() {
-                //     let io = ui_manager.context.io();
-                //     if !io.want_capture_keyboard {
-                //         self.scene.camera_manager.process_keyboard_event(&event);
-                //     }
-                // }
             }
-            // FIXED: Proper resize handling
             WindowEvent::Resized(PhysicalSize { width, height }) => {
-                println!("Window resized to: {}x{}", width, height);
-
-                // Update camera projection first
+                // Update all systems to handle new window size
                 self.scene
                     .camera_manager
                     .camera
                     .resize_projection(width, height);
-
-                // Resize render engine (this validates dimensions)
                 render_engine.resize(width, height);
 
-                // CRITICAL: Update ImGui display size to match actual surface size
+                // Keep UI scaling synchronized with actual surface size
                 if let Some(ui_manager) = self.ui_manager.as_mut() {
                     let (actual_width, actual_height) = render_engine.get_surface_size();
                     ui_manager.update_display_size(actual_width, actual_height);
-                    println!(
-                        "Updated ImGui display size to: {}x{}",
-                        actual_width, actual_height
-                    );
                 }
             }
-            // ALSO HANDLE: Scale factor changes (important for high-DPI displays)
             WindowEvent::ScaleFactorChanged {
-                scale_factor,
-                inner_size_writer: _,
+                scale_factor: _, ..
             } => {
-                println!("Scale factor changed to: {}", scale_factor);
                 let PhysicalSize { width, height } = window.inner_size();
 
-                // Update camera projection
+                // Handle high-DPI display changes
                 self.scene
                     .camera_manager
                     .camera
                     .resize_projection(width, height);
-
-                // Resize render engine
                 render_engine.resize(width, height);
 
-                // Update ImGui display size
                 if let Some(ui_manager) = self.ui_manager.as_mut() {
                     let (actual_width, actual_height) = render_engine.get_surface_size();
                     ui_manager.update_display_size(actual_width, actual_height);
-                    println!(
-                        "Updated ImGui display size after scale change: {}x{}",
-                        actual_width, actual_height
-                    );
                 }
             }
             WindowEvent::CloseRequested => {
                 event_loop.exit();
             }
             WindowEvent::RedrawRequested => {
-                // Early return if no render engine
                 let Some(_) = self.render_engine.as_ref() else {
                     return;
                 };
 
-                // PASS 1: UI Logic & Scene Updates
-
-                // Update scene
+                // Update phase: Scene logic and UI interaction
                 self.scene.update();
 
-                // Handle UI logic and scene modifications
                 if let (Some(ui_manager), Some(ui_callback)) =
                     (self.ui_manager.as_mut(), &self.ui_callback)
                 {
-                    // Run UI logic - this modifies the scene
                     let ui_wants_input = ui_manager.update_logic(window, |ui| {
                         ui_callback(ui, &mut self.scene, &mut self.selected_object_index);
                     });
 
-                    // Update camera controls only if UI doesn't want input
+                    // Camera controls are disabled when UI has focus
                     if !ui_wants_input {
-                        // Camera can process input normally
+                        // Camera input processing would happen here
                     }
                 }
 
-                // Apply any transform changes from UI to GPU
+                // Apply UI transform changes to GPU buffers
                 if let Some(render_engine_ref) = self.render_engine.as_ref() {
                     self.scene
                         .apply_ui_transforms_and_update_gpu(render_engine_ref.queue());
                 }
 
-                // Get mutable reference to render engine for the rest
+                // Render phase: Draw 3D scene and UI overlay
                 let Some(render_engine) = self.render_engine.as_mut() else {
                     return;
                 };
 
-                // Update camera uniforms
                 render_engine.update(self.scene.camera_manager.camera.uniform);
 
-                // PASS 2: Rendering Only
-
                 if self.ui_manager.is_some() {
-                    // Render 3D scene + UI overlay
+                    // Render 3D scene with UI overlay
                     render_engine.render_frame_with_ui(
                         &self.scene,
                         |device, queue, encoder, color_attachment| {
-                            // Render UI display (no scene modification here)
                             self.ui_manager.as_mut().unwrap().render_display_only(
                                 device,
                                 queue,
@@ -328,7 +362,7 @@ impl ApplicationHandler for AppState {
                         },
                     );
                 } else {
-                    // Just render 3D scene
+                    // Render 3D scene only
                     render_engine.render_frame(&self.scene);
                 }
             }
@@ -336,27 +370,33 @@ impl ApplicationHandler for AppState {
         }
     }
 
+    /// Handles device-level input events (mouse movement, etc.)
+    ///
+    /// Processes camera controls when UI is not capturing input.
     fn device_event(
         &mut self,
-        event_loop: &ActiveEventLoop,
-        device_id: winit::event::DeviceId,
+        _event_loop: &ActiveEventLoop,
+        _device_id: winit::event::DeviceId,
         event: winit::event::DeviceEvent,
     ) {
-        let (Some(window)) = (self.window.as_ref()) else {
+        let Some(window) = self.window.as_ref() else {
             return;
         };
 
-        // Check if UI wants to capture input before processing camera events
+        // Respect UI input capture to prevent camera movement during UI interaction
         if let Some(ui_manager) = self.ui_manager.as_ref() {
             let io = ui_manager.context.io();
             if io.want_capture_mouse || io.want_capture_keyboard {
-                return; // Don't process camera events when UI is active
+                return;
             }
         }
 
         self.scene.camera_manager.process_event(&event, window);
     }
 
+    /// Called when the event loop is about to wait for new events
+    ///
+    /// Requests a redraw to maintain smooth animation and responsive UI.
     fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
         if let Some(ref window) = self.window {
             window.request_redraw();
