@@ -6,7 +6,7 @@ use crate::gfx::{
     scene::object::Mesh,
 };
 
-use super::object::{self, Object};
+use super::object::Object;
 
 /// Main scene containing objects, materials, and camera
 pub struct Scene {
@@ -50,9 +50,6 @@ impl Scene {
             Vec::new()
         });
 
-        println!("Number of models          = {}", models.len());
-        println!("Number of materials       = {}", materials.len());
-
         // Load materials from OBJ file into material manager
         for (i, mtl) in materials.iter().enumerate() {
             let material_name = if mtl.name.is_empty() {
@@ -80,7 +77,6 @@ impl Scene {
             );
 
             self.material_manager.add_material(material);
-            println!("Added material: {}", material_name);
         }
 
         let mut meshes = Vec::new();
@@ -88,33 +84,28 @@ impl Scene {
         for (i, m) in models.iter().enumerate() {
             let mesh = &m.mesh;
 
-            println!("model[{}].name             = \'{}\'", i, m.name);
-            println!("model[{}].mesh.material_id = {:?}", i, mesh.material_id);
-
             // DEBUG: Print what we're getting from tobj
-            println!(
-                "Positions: {} ({} vertices)",
-                mesh.positions.len(),
-                mesh.positions.len() / 3
-            );
-            println!(
-                "Normals: {} ({} normals)",
-                mesh.normals.len(),
-                mesh.normals.len() / 3
-            );
-            println!(
-                "Indices: {} ({} triangles)",
-                mesh.indices.len(),
-                mesh.indices.len() / 3
-            );
+            // println!(
+            //     "Positions: {} ({} vertices)",
+            //     mesh.positions.len(),
+            //     mesh.positions.len() / 3
+            // );
+            // println!(
+            //     "Normals: {} ({} normals)",
+            //     mesh.normals.len(),
+            //     mesh.normals.len() / 3
+            // );
+            // println!(
+            //     "Indices: {} ({} triangles)",
+            //     mesh.indices.len(),
+            //     mesh.indices.len() / 3
+            // );
 
             // Use normals from OBJ if available, otherwise calculate them
             let normals = if !mesh.normals.is_empty() && mesh.normals.len() == mesh.positions.len()
             {
-                println!("Using normals from OBJ file");
                 mesh.normals.clone()
             } else {
-                println!("No valid normals in OBJ file, calculating face normals...");
                 Mesh::calculate_face_normals(&mesh.positions, &mesh.indices)
             };
 
@@ -140,7 +131,6 @@ impl Scene {
                         materials[material_id].name.clone()
                     };
                     object.set_material(&material_name);
-                    println!("Assigned material '{}' to object", material_name);
                 }
             }
         }
@@ -313,6 +303,18 @@ impl Scene {
             total_triangles,
             total_vertices,
         }
+    }
+
+    pub fn ensure_unique_name(&mut self, desired_name: &str) -> String {
+        let mut counter = 0;
+        let mut test_name = desired_name.to_string();
+
+        while self.objects.iter().any(|obj| obj.name == test_name) {
+            counter += 1;
+            test_name = format!("{} ({})", desired_name, counter);
+        }
+
+        test_name
     }
 }
 

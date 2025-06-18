@@ -187,15 +187,6 @@ impl Material {
         if let Some(ubo) = &mut self.material_ubo {
             ubo.update_content(queue, uniform_data);
         }
-
-        // Check if bind group is accessible
-        if let Some(bind_group) = self.get_bind_group() {
-            println!("✓ Material '{}' bind group is accessible", self.name);
-        } else {
-            println!("❌ Material '{}' bind group is NOT accessible", self.name);
-        }
-
-        println!("=== END UPDATE FOR MATERIAL '{}' ===", self.name);
     }
     /// Gets the bind group for rendering
     pub fn get_bind_group(&self) -> Option<&wgpu::BindGroup> {

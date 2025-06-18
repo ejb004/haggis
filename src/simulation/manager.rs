@@ -89,10 +89,15 @@ impl SimulationManager {
     /// * `ui` - ImGui UI context
     /// * `scene` - Scene reference for simulation UI
     pub fn render_ui(&mut self, ui: &Ui, scene: &mut Scene) {
+        let display_size = ui.io().display_size;
+        let panel_width = 300.0;
+        let panel_x = display_size[0] - panel_width - 20.0; // Position on right side
+
         if let Some(simulation) = &mut self.simulation {
             // Main simulation controls
             ui.window("Simulation Control")
-                .size([300.0, 200.0], imgui::Condition::FirstUseEver)
+                .size([panel_width, 200.0], imgui::Condition::FirstUseEver)
+                .position([panel_x, 240.0], imgui::Condition::FirstUseEver) // Stack below SimplyMove panel
                 .build(|| {
                     ui.text(&format!("Simulation: {}", simulation.name()));
                     ui.separator();
@@ -131,12 +136,13 @@ impl SimulationManager {
                     }
                 });
 
-            // Let simulation render its own UI
+            // Let simulation render its own UI (positioned at top of right side)
             simulation.render_ui(ui);
         } else {
             // No simulation loaded
             ui.window("Simulation Control")
-                .size([300.0, 100.0], imgui::Condition::FirstUseEver)
+                .size([panel_width, 100.0], imgui::Condition::FirstUseEver)
+                .position([panel_x, 20.0], imgui::Condition::FirstUseEver)
                 .build(|| {
                     ui.text("No simulation loaded");
                     ui.text("Use haggis.attach_simulation() to load one");

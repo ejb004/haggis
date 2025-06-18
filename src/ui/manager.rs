@@ -4,7 +4,7 @@
 //! Handles ImGui integration with wgpu and winit, providing frame management,
 //! input handling, and rendering capabilities for the engine's user interface.
 
-use imgui::{Context, FontConfig, FontSource, MouseCursor, Ui};
+use imgui::{Context, FontConfig, FontSource, MouseCursor};
 use imgui_wgpu::{Renderer, RendererConfig};
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
 use std::time::Instant;

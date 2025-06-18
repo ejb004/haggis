@@ -22,7 +22,8 @@ use crate::{
         rendering::render_engine::RenderEngine,
         scene::{object::ObjectBuilder, scene::Scene},
     },
-    ui::UiManager,
+    simulation::{manager::SimulationManager, traits::Simulation},
+    ui::manager::UiManager,
 };
 
 /// UI callback function signature
@@ -42,6 +43,7 @@ pub type UiCallback = Box<dyn Fn(&imgui::Ui, &mut Scene, &mut Option<usize>) + S
 /// ```rust
 /// let mut app = haggis::default();
 /// app.add_object("model.obj").with_transform([0.0, 0.0, 0.0], 1.0, 0.0);
+/// app.attach_simulation(MySimulation::new());
 /// app.set_ui(|ui, scene, selected| {
 ///     ui.text("Hello, Haggis!");
 /// });
@@ -55,7 +57,7 @@ pub struct HaggisApp {
 /// Internal application state
 ///
 /// Contains all runtime state including graphics resources, scene data,
-/// and UI management. Separated from HaggisApp to implement ApplicationHandler.
+/// UI management, and simulation management. Separated from HaggisApp to implement ApplicationHandler.
 pub struct AppState {
     window: Option<Arc<Window>>,
     pub render_engine: Option<RenderEngine>,
@@ -63,6 +65,9 @@ pub struct AppState {
     pub scene: Scene,
     pub ui_callback: Option<UiCallback>,
     selected_object_index: Option<usize>,
+
+    // Simulation management
+    pub simulation_manager: SimulationManager,
 }
 
 impl HaggisApp {
@@ -92,8 +97,48 @@ impl HaggisApp {
                 ui_manager: None,
                 ui_callback: None,
                 selected_object_index: Some(0),
+                simulation_manager: SimulationManager::new(),
             },
         }
+    }
+
+    /// Attach a user-defined simulation to the engine
+    ///
+    /// # Arguments
+    /// * `simulation` - User simulation implementing the Simulation trait
+    ///
+    /// # Example
+    /// ```rust
+    /// app.attach_simulation(MyPhysicsSimulation::new());
+    /// ```
+    pub fn attach_simulation<T: Simulation + 'static>(&mut self, simulation: T) {
+        self.app_state
+            .simulation_manager
+            .attach_simulation(Box::new(simulation), &mut self.app_state.scene);
+        println!("=== SIM ATTATCHED ===")
+    }
+
+    /// Remove current simulation
+    pub fn detach_simulation(&mut self) {
+        self.app_state
+            .simulation_manager
+            .detach_simulation(&mut self.app_state.scene);
+    }
+
+    /// Check if simulation is currently running
+    ///
+    /// # Returns
+    /// `true` if simulation exists and is not paused
+    pub fn is_simulation_running(&self) -> bool {
+        self.app_state.simulation_manager.is_running()
+    }
+
+    /// Get name of current simulation
+    ///
+    /// # Returns
+    /// Optional reference to the simulation name
+    pub fn current_simulation(&self) -> Option<&str> {
+        self.app_state.simulation_manager.current_simulation_name()
     }
 
     /// Sets the UI callback function
@@ -318,6 +363,13 @@ impl ApplicationHandler for AppState {
                     return;
                 };
 
+                // Calculate delta time for simulation
+                // Note: You might want to add a proper delta time calculation here
+                let delta_time = 0.016; // Approximate 60 FPS - replace with actual timing
+
+                // Update simulation before scene update
+                self.simulation_manager.update(delta_time, &mut self.scene);
+
                 // Update phase: Scene logic and UI interaction
                 self.scene.update();
 
@@ -325,6 +377,10 @@ impl ApplicationHandler for AppState {
                     (self.ui_manager.as_mut(), &self.ui_callback)
                 {
                     let ui_wants_input = ui_manager.update_logic(window, |ui| {
+                        // Render simulation UI first
+                        self.simulation_manager.render_ui(ui, &mut self.scene);
+
+                        // Then render user UI callback if provided
                         ui_callback(ui, &mut self.scene, &mut self.selected_object_index);
                     });
 
@@ -332,9 +388,14 @@ impl ApplicationHandler for AppState {
                     if !ui_wants_input {
                         // Camera input processing would happen here
                     }
+                } else if let Some(ui_manager) = self.ui_manager.as_mut() {
+                    // If no user UI callback, still render simulation UI
+                    let _ui_wants_input = ui_manager.update_logic(window, |ui| {
+                        self.simulation_manager.render_ui(ui, &mut self.scene);
+                    });
                 }
 
-                // Apply UI transform changes to GPU buffers
+                // Apply UI transform changes to GPU buffers (only if no simulation is controlling objects)
                 if let Some(render_engine_ref) = self.render_engine.as_ref() {
                     self.scene
                         .apply_ui_transforms_and_update_gpu(render_engine_ref.queue());

@@ -1,4 +1,4 @@
-// Adapted shader with material support - based on your working shader
+// Clean PBR shader without normal coloring
 
 struct Camera {
     view_pos: vec4<f32>,
@@ -65,62 +65,87 @@ fn vs_main(model: VertexInput) -> VertexOutput {
     return out;
 }
 
+// PBR utility functions
+fn distribution_ggx(n_dot_h: f32, roughness: f32) -> f32 {
+    let a = roughness * roughness;
+    let a2 = a * a;
+    let denom = n_dot_h * n_dot_h * (a2 - 1.0) + 1.0;
+    return a2 / (3.14159265 * denom * denom);
+}
+
+fn geometry_schlick_ggx(n_dot_v: f32, roughness: f32) -> f32 {
+    let r = roughness + 1.0;
+    let k = (r * r) / 8.0;
+    return n_dot_v / (n_dot_v * (1.0 - k) + k);
+}
+
+fn geometry_smith(n_dot_v: f32, n_dot_l: f32, roughness: f32) -> f32 {
+    let ggx2 = geometry_schlick_ggx(n_dot_v, roughness);
+    let ggx1 = geometry_schlick_ggx(n_dot_l, roughness);
+    return ggx1 * ggx2;
+}
+
+fn fresnel_schlick(cos_theta: f32, f0: vec3<f32>) -> vec3<f32> {
+    return f0 + (vec3<f32>(1.0) - f0) * pow(1.0 - cos_theta, 5.0);
+}
+
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    // Use material base color instead of hardcoded color
-    let base_object_color = material.base_color.rgb;
+    let albedo = material.base_color.rgb;
+    let metallic = material.metallic;
+    let roughness = max(material.roughness, 0.04); // Prevent division by zero
     
-    let normal = normalize(in.world_normal);
-    let normal_color = (normal + 1.0) * 0.5;
+    let n = normalize(in.world_normal);
+    let v = normalize(camera.view_pos.xyz - in.world_position);
+    let l = normalize(LIGHT.position - in.world_position);
+    let h = normalize(v + l);
     
-    // Use material roughness to control normal influence
-    let normal_influence = material.roughness * 0.5; // Less normal color on smooth surfaces
-    let object_color = mix(base_object_color, normal_color, normal_influence);
+    let n_dot_v = max(dot(n, v), 0.0);
+    let n_dot_l = max(dot(n, l), 0.0);
+    let n_dot_h = max(dot(n, h), 0.0);
+    let v_dot_h = max(dot(v, h), 0.0);
     
-    let light_dir = normalize(LIGHT.position - in.world_position);
-    let view_dir = normalize(camera.view_pos.xyz - in.world_position);
-    let half_dir = normalize(view_dir + light_dir);
+    // Calculate F0 for dielectric/metallic materials
+    let f0 = mix(vec3<f32>(0.04), albedo, metallic);
     
-    // Ambient lighting with material's occlusion strength
-    let ambient_strength = 0.15;
-    let ambient_base = LIGHT.color * ambient_strength;
+    // Cook-Torrance BRDF
+    let d = distribution_ggx(n_dot_h, roughness);
+    let g = geometry_smith(n_dot_v, n_dot_l, roughness);
+    let f = fresnel_schlick(v_dot_h, f0);
     
-    let fresnel_ao = abs(dot(view_dir, normal));
-    let ao_strength = material.occlusion_strength * 0.4; // Use material's AO setting
-    let ambient_occlusion = mix(1.0 - ao_strength, 1.0, fresnel_ao);
-    let ambient_color = ambient_base * ambient_occlusion;
+    let numerator = d * g * f;
+    let denominator = 4.0 * n_dot_v * n_dot_l + 0.001;
+    let specular = numerator / denominator;
     
-    // Diffuse lighting
-    let n_dot_l = max(dot(normal, light_dir), 0.0);
-    let diffuse_strength = n_dot_l;
-    let diffuse_color = LIGHT.color * diffuse_strength;
+    let ks = f;
+    let kd = (vec3<f32>(1.0) - ks) * (1.0 - metallic);
     
-    // Specular lighting based on material roughness
-    let n_dot_h = max(dot(normal, half_dir), 0.0);
-    let shininess = (1.0 - material.roughness) * 128.0 + 1.0; // Rough = low shininess
-    let specular_strength = pow(n_dot_h, shininess);
+    // Reduced brightness lighting
+    let light_distance = length(LIGHT.position - in.world_position);
+    let attenuation = 1.0 / (1.0 + 0.02 * light_distance); // Slightly more falloff
+    let radiance = LIGHT.color * attenuation * 10.0; // Reduced from 15.0 to 8.0 -----------------> Can Change
     
-    // Metallic materials have different specular behavior
-    let specular_intensity = mix(0.8, 1.2, material.metallic); // Metals more reflective
-    let specular_color = specular_strength * LIGHT.color * specular_intensity;
+    let diffuse = albedo / 3.14159265;
+    let color = (kd * diffuse + specular) * radiance * n_dot_l;
     
-    // Rim lighting (less prominent on metals)
-    let rim_power = 2.0;
-    let rim_intensity = 0.3 * (1.0 - material.metallic * 0.5); // Reduce rim on metals
-    let rim_factor = 1.0 - abs(dot(view_dir, normal));
-    let rim_light = pow(rim_factor, rim_power) * rim_intensity * LIGHT.color;
+    // Fresnel-based fake shadows for depth perception
+    let fresnel_depth = 1.0 - n_dot_v; // Edge surfaces are darker
+    let shadow_strength = 0.9; // How strong the fake shadows are -------------------------------> Can Change
+    let fake_shadow = 1.0 - (fresnel_depth * shadow_strength);
     
-    // Combine lighting
-    let final_lighting = ambient_color + diffuse_color + specular_color + rim_light;
-    var result = final_lighting * object_color;
+    // Moderate ambient lighting with fake shadows applied
+    let ambient = vec3<f32>(0.15) * albedo * fake_shadow;
+    let final_color = ambient + color * fake_shadow;
     
-    // Add emissive color
-    result += material.emissive;
+    // Add emissive
+    let result = final_color + material.emissive;
     
-    // Fresnel effect (more prominent on metals)
-    let fresnel = abs(dot(view_dir, normal));
-    let fresnel_strength = mix(0.6, 0.3, material.metallic); // Metals have different fresnel
-    let fresnel_mix = mix(fresnel_strength, 1.0, fresnel);
+    // Simpler tone mapping to reduce banding
+    let exposure = 0.8; // Slightly darker exposure
+    let mapped = 1.0 - exp(-result * exposure);
     
-    return vec4<f32>(result * fresnel_mix, material.base_color.a);
+    // Gamma correction
+    let gamma_corrected = pow(mapped, vec3<f32>(1.0 / 2.2));
+    
+    return vec4<f32>(gamma_corrected, material.base_color.a);
 }

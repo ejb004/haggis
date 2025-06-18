@@ -125,6 +125,18 @@ impl<'a> ObjectBuilder<'a> {
         Self { app, object_index }
     }
 
+    /// Sets the object name
+    pub fn with_name(self, name: &str) -> Self {
+        // First, generate unique name (immutable borrow)
+        let unique_name = self.app.app_state.scene.ensure_unique_name(name);
+
+        // Then, set the name (mutable borrow)
+        if let Some(object) = self.app.app_state.scene.objects.get_mut(self.object_index) {
+            object.set_name(unique_name);
+        }
+        self
+    }
+
     /// Sets transform with position, scale, and Y rotation
     pub fn with_transform(self, position: [f32; 3], scale: f32, rotation_y: f32) -> Self {
         if let Some(object) = self.app.app_state.scene.objects.get_mut(self.object_index) {

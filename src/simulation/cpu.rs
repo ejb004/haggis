@@ -3,10 +3,6 @@
 //! Provides helper types and utilities specifically for CPU-based simulations,
 //! including common patterns and data structures that CPU simulations often need.
 
-use super::traits::Simulation;
-use crate::gfx::scene::Scene;
-use imgui::Ui;
-
 /// Base struct for CPU simulations with common functionality
 ///
 /// Provides standard fields that most CPU simulations need, reducing boilerplate.

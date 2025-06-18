@@ -1,4 +1,3 @@
-use std::thread::scope;
 
 use winit::{
     dpi::PhysicalPosition,
@@ -7,7 +6,7 @@ use winit::{
     window::Window,
 };
 
-use super::orbit_camera::{self, OrbitCamera};
+use super::orbit_camera::{OrbitCamera};
 
 pub struct CameraController {
     pub rotate_speed: f32,

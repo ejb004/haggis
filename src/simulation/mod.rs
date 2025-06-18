@@ -9,3 +9,4 @@ pub mod cpu;
 pub mod manager;
 pub mod traits;
 // pub mod gpu;
+pub mod examples;
