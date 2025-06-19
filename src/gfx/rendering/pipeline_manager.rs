@@ -22,6 +22,7 @@ pub struct PipelineConfig {
     pub depth_texture: Option<Texture>,
     pub multisample: MultisampleState,
     pub color_targets: Vec<Option<ColorTargetState>>,
+    pub vertex_only: bool, //for shadow pass
 }
 
 impl Default for PipelineConfig {
@@ -39,6 +40,7 @@ impl Default for PipelineConfig {
                 blend: Some(BlendState::REPLACE),
                 write_mask: ColorWrites::ALL,
             })],
+            vertex_only: false,
         }
     }
 }
@@ -53,6 +55,16 @@ impl PipelineConfig {
             shader: shader.to_string(),
             ..Default::default()
         }
+    }
+
+    pub fn with_label(mut self, label: &str) -> Self {
+        self.label = label.to_owned();
+        self
+    }
+
+    pub fn with_vertex_only(mut self) -> Self {
+        self.vertex_only = true;
+        self
     }
 
     /// Sets the shader for this pipeline (builder pattern)
@@ -283,6 +295,7 @@ impl PipelineManager {
     }
 
     /// Creates a render pipeline from configuration
+    /// Creates a render pipeline from configuration
     fn create_pipeline_from_config(
         &self,
         name: &str,
@@ -303,6 +316,18 @@ impl PipelineManager {
                 push_constant_ranges: &[],
             });
 
+        // Handle vertex-only pipelines (like shadow pass)
+        let fragment_state = if config.vertex_only {
+            None // No fragment shader for vertex-only pipelines
+        } else {
+            Some(FragmentState {
+                module: shader,
+                entry_point: Some("fs_main"),
+                targets: &config.color_targets,
+                compilation_options: PipelineCompilationOptions::default(),
+            })
+        };
+
         let pipeline = self
             .device
             .create_render_pipeline(&RenderPipelineDescriptor {
@@ -314,12 +339,7 @@ impl PipelineManager {
                     buffers: &[Vertex3D::desc()],
                     compilation_options: PipelineCompilationOptions::default(),
                 },
-                fragment: Some(FragmentState {
-                    module: shader,
-                    entry_point: Some("fs_main"),
-                    targets: &config.color_targets,
-                    compilation_options: PipelineCompilationOptions::default(),
-                }),
+                fragment: fragment_state, // Now respects vertex_only flag
                 primitive: PrimitiveState {
                     topology: config.primitive_topology,
                     strip_index_format: None,

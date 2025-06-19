@@ -23,13 +23,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .add_object("examples/test/cube.obj")
         .with_material("grey") // Assign steel material
         .with_name("_ground")
-        .with_transform([0.0, -20.0, 0.0], 10.0, 0.0);
+        .with_transform([0.0, -2.0, 0.0], 1.0, 0.0);
 
     haggis.set_ui(|ui, scene, selected_index| {
         default_transform_panel(ui, scene, selected_index);
     });
 
-    haggis.attach_simulation(SimplyMove::new());
+    // haggis.attach_simulation(SimplyMove::new());
 
     haggis.run();
     Ok(())
