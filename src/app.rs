@@ -82,7 +82,7 @@ impl HaggisApp {
         let event_loop = EventLoop::new().expect("Failed to create event loop");
 
         // Configure default orbit camera
-        let mut camera = OrbitCamera::new(5.0, 0.4, 0.2, Vector3::new(0.0, 0.0, 0.0), 1.0);
+        let mut camera = OrbitCamera::new(8.0, 0.4, 0.2, Vector3::new(0.0, 0.0, 0.0), 1.0);
         camera.bounds.min_distance = Some(1.1);
         let controller = CameraController::new(0.005, 0.1);
         let camera_manager = CameraManager::new(camera, controller);
@@ -312,16 +312,20 @@ impl ApplicationHandler for AppState {
         }
 
         match event {
-            WindowEvent::KeyboardInput {
-                event:
-                    winit::event::KeyEvent {
-                        physical_key: winit::keyboard::PhysicalKey::Code(key_code),
-                        ..
-                    },
-                ..
-            } => {
-                if matches!(key_code, winit::keyboard::KeyCode::Escape) {
-                    event_loop.exit();
+            WindowEvent::KeyboardInput { event, .. } => {
+                // Handle camera keyboard events (like Shift for panning)
+                self.scene.camera_manager.process_keyboard_event(&event);
+
+                // Handle other keyboard shortcuts
+                if let winit::event::KeyEvent {
+                    physical_key: winit::keyboard::PhysicalKey::Code(key_code),
+                    state: winit::event::ElementState::Pressed,
+                    ..
+                } = event
+                {
+                    if matches!(key_code, winit::keyboard::KeyCode::Escape) {
+                        event_loop.exit();
+                    }
                 }
             }
             WindowEvent::Resized(PhysicalSize { width, height }) => {
@@ -430,7 +434,6 @@ impl ApplicationHandler for AppState {
             _ => (),
         }
     }
-
     /// Handles device-level input events (mouse movement, etc.)
     ///
     /// Processes camera controls when UI is not capturing input.

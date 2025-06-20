@@ -1,4 +1,3 @@
-
 use winit::{
     dpi::PhysicalPosition,
     event::{DeviceEvent, ElementState, KeyEvent, MouseScrollDelta},
@@ -6,13 +5,15 @@ use winit::{
     window::Window,
 };
 
-use super::orbit_camera::{OrbitCamera};
+use super::orbit_camera::OrbitCamera;
 
 pub struct CameraController {
     pub rotate_speed: f32,
     pub zoom_speed: f32,
+    pub pan_speed: f32,
     is_drag_rotate: bool,
-    is_pan: bool,
+    is_shift_held: bool,
+    is_mouse_pressed: bool,
 }
 
 impl CameraController {
@@ -20,8 +21,10 @@ impl CameraController {
         Self {
             rotate_speed,
             zoom_speed,
+            pan_speed: 0.01, // Increased for more noticeable panning
             is_drag_rotate: false,
-            is_pan: false,
+            is_shift_held: false,
+            is_mouse_pressed: false,
         }
     }
 
@@ -33,20 +36,13 @@ impl CameraController {
     ) {
         match event {
             DeviceEvent::Button {
-                button: 0, // The Left Mouse Button on macos.
-
+                button: 0, // Left Mouse Button
                 state,
             } => {
-                let is_pressed = *state == ElementState::Pressed;
-                if self.is_pan {
-                    self.is_pan = is_pressed;
-                } else {
-                    self.is_drag_rotate = is_pressed;
-                }
+                self.is_mouse_pressed = *state == ElementState::Pressed;
             }
             DeviceEvent::MouseWheel { delta, .. } => {
                 let scroll_amount = -match delta {
-                    // A mouse line is about 1 px.
                     MouseScrollDelta::LineDelta(_, scroll) => scroll * 1.0,
                     MouseScrollDelta::PixelDelta(PhysicalPosition { y: scroll, .. }) => {
                         *scroll as f32
@@ -56,15 +52,20 @@ impl CameraController {
                 window.request_redraw();
             }
             DeviceEvent::MouseMotion { delta } => {
-                if self.is_drag_rotate {
-                    camera.add_yaw(-delta.0 as f32 * self.rotate_speed);
-                    camera.add_pitch(delta.1 as f32 * self.rotate_speed);
-                    window.request_redraw();
-                } else if self.is_pan {
-                    camera.pan((
-                        delta.0 as f32 * self.rotate_speed / 2.0,
-                        delta.1 as f32 * self.rotate_speed / 2.0,
-                    ));
+                if self.is_mouse_pressed {
+                    if self.is_shift_held {
+                        // SHIFT + DRAG = PAN (move focus point)
+
+                        camera.pan((
+                            -delta.0 as f32 * self.pan_speed,
+                            delta.1 as f32 * self.pan_speed,
+                        ));
+                    } else {
+                        // NORMAL DRAG = ROTATE (orbit around focus)
+
+                        camera.add_yaw(-delta.0 as f32 * self.rotate_speed);
+                        camera.add_pitch(delta.1 as f32 * self.rotate_speed);
+                    }
                     window.request_redraw();
                 }
             }
@@ -72,17 +73,53 @@ impl CameraController {
         }
     }
 
-    pub fn process_keyed_events(&mut self, event: &KeyEvent) {
+    pub fn process_keyed_events(&mut self, event: &KeyEvent, camera: &mut OrbitCamera) {
         match event {
             KeyEvent {
-                physical_key: PhysicalKey::Code(KeyCode::ShiftLeft),
+                physical_key: PhysicalKey::Code(KeyCode::ShiftLeft | KeyCode::ShiftRight),
                 state,
                 ..
             } => {
-                let is_pressed = *state == ElementState::Pressed;
-                self.is_pan = is_pressed;
+                let was_shift_held = self.is_shift_held;
+                self.is_shift_held = *state == ElementState::Pressed;
+
+                // Debug output
+                if was_shift_held != self.is_shift_held {
+                    println!("Shift state changed: {}", self.is_shift_held);
+                }
+            }
+            KeyEvent {
+                physical_key: PhysicalKey::Code(KeyCode::KeyC),
+                state: ElementState::Pressed,
+                ..
+            } => {
+                // Reset camera when Shift+C is pressed
+                if self.is_shift_held {
+                    println!("🔄 Resetting camera to default position");
+                    camera.reset_to_default();
+                }
             }
             _ => (),
         }
+    }
+
+    /// Updates the drag mode based on current shift and mouse state
+    fn update_drag_mode(&mut self) {
+        self.is_drag_rotate = self.is_mouse_pressed && !self.is_shift_held;
+    }
+
+    /// Returns true if currently panning
+    pub fn is_panning(&self) -> bool {
+        self.is_mouse_pressed && self.is_shift_held
+    }
+
+    /// Returns true if currently rotating
+    pub fn is_rotating(&self) -> bool {
+        self.is_drag_rotate
+    }
+
+    /// Adjust panning sensitivity
+    pub fn set_pan_speed(&mut self, speed: f32) {
+        self.pan_speed = speed;
     }
 }

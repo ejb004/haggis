@@ -56,6 +56,16 @@ impl OrbitCamera {
         camera
     }
 
+    pub fn reset_to_default(&mut self) {
+        // Store original values - you can customize these defaults
+        self.distance = 8.0; // Default distance
+        self.pitch = 0.4; // Slight downward angle
+        self.yaw = 0.2; // Facing forward
+        self.target = Vector3::zero(); // Look at origin
+
+        self.update(); // Recalculate eye position
+    }
+
     pub fn set_distance(&mut self, distance: f32) {
         self.distance = distance.clamp(
             self.bounds.min_distance.unwrap_or(f32::EPSILON),
@@ -95,17 +105,29 @@ impl OrbitCamera {
         self.set_yaw(self.yaw + delta);
     }
 
+    /// Pans the camera relative to the current view direction
+    /// delta.0 = horizontal pan (left/right relative to camera view)
+    /// delta.1 = vertical pan (up/down relative to camera view)
     pub fn pan(&mut self, delta: (f32, f32)) {
-        self.eye.y += delta.1 * self.distance;
-        self.target.y += delta.1 * self.distance;
-        // println!("{:?}", self.distance);
-
+        // Calculate camera's local coordinate system
         let forward = (self.target - self.eye).normalize();
+        let right = forward.cross(self.up).normalize();
+        let up = right.cross(forward).normalize(); // True "up" relative to camera
 
-        let cross = forward.cross(self.up).normalize();
+        // Scale pan movement by distance for consistent feel at all zoom levels
+        let pan_scale = self.distance * 0.1; // Adjust this multiplier for sensitivity
 
-        self.eye -= cross * delta.0 * self.distance;
-        self.target -= cross * delta.0 * self.distance;
+        // Calculate movement in view space
+        let horizontal_movement = right * delta.0 * pan_scale;
+        let vertical_movement = up * delta.1 * pan_scale;
+        let total_movement = horizontal_movement + vertical_movement;
+
+        // Move both eye and target to maintain the view direction
+        self.eye += total_movement;
+        self.target += total_movement;
+
+        // Debug output (remove if not needed)
+        // println!("Pan delta: ({:.3}, {:.3}), Movement: {:?}", delta.0, delta.1, total_movement);
     }
 
     /// Updates the camera after changing `distance`, `pitch` or `yaw`.

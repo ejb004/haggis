@@ -166,9 +166,9 @@ impl RenderEngine {
 
         // Initialize global uniform bindings for camera and lighting
         let light_config = LightConfig {
-            position: [8.0, 8.0, 8.0], // More diagonal, better for seeing shadows
+            position: [20.0, 20.0, 20.0], // More diagonal, better for seeing shadows
             color: [1.0, 1.0, 1.0],
-            intensity: 1.0,
+            intensity: 2.0,
         };
         let global_ubo = GlobalUBO::new(&device);
         let mut global_bindings = GlobalBindings::new(&device);

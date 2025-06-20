@@ -1,5 +1,8 @@
 use cgmath::{Matrix4, SquareMatrix};
-use winit::{event::DeviceEvent, window::Window};
+use winit::{
+    event::{DeviceEvent, KeyEvent},
+    window::Window,
+};
 
 use super::{camera_controller::CameraController, orbit_camera::OrbitCamera};
 
@@ -7,6 +10,7 @@ pub struct CameraManager {
     pub camera: OrbitCamera,
     pub controller: CameraController,
 }
+
 impl CameraManager {
     pub fn new(camera: OrbitCamera, controller: CameraController) -> Self {
         Self { camera, controller }
@@ -16,7 +20,14 @@ impl CameraManager {
         self.controller
             .process_events(event, window, &mut self.camera);
     }
+
+    // Updated method - passes camera reference to controller
+    pub fn process_keyboard_event(&mut self, event: &KeyEvent) {
+        self.controller
+            .process_keyed_events(event, &mut self.camera);
+    }
 }
+
 pub trait Camera: Sized {
     fn build_view_projection_matrix(&self) -> Matrix4<f32>;
 }

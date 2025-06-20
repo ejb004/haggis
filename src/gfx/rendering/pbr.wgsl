@@ -88,42 +88,60 @@ fn fresnel_schlick(cos_theta: f32, f0: vec3<f32>) -> vec3<f32> {
     return f0 + (vec3<f32>(1.0) - f0) * pow(1.0 - cos_theta, 5.0);
 }
 
-// Shadow calculation
-fn calculate_shadow(light_space_pos: vec4<f32>) -> f32 {
-    // Perspective divide
+// Simple 4-sample PCF focused on anti-acne
+fn calculate_shadow_simple_pcf(light_space_pos: vec4<f32>, normal: vec3<f32>, light_dir: vec3<f32>) -> f32 {
     var ndc = light_space_pos.xyz / light_space_pos.w;
-    
-    // Transform to texture coordinates [0, 1]
     let shadow_coord = vec3<f32>(
         ndc.x * 0.5 + 0.5,
-        -ndc.y * 0.5 + 0.5, // Flip Y
+        -ndc.y * 0.5 + 0.5,
         ndc.z
     );
     
-    // Check if we're outside the shadow map
     if (shadow_coord.x < 0.0 || shadow_coord.x > 1.0 || 
         shadow_coord.y < 0.0 || shadow_coord.y > 1.0) {
-        return 1.0; // No shadow
+        return 1.0;
     }
     
-    // Sample shadow map with comparison
-    let shadow_factor = textureSampleCompare(
-        shadow_map, 
-        shadow_sampler, 
-        shadow_coord.xy, 
-        shadow_coord.z - 0.001 // Reduced bias to prevent shadow acne
-    );
-
-    // let shadow_factor = 1.0;
+    // Advanced bias calculation to prevent shadow acne
+    let n_dot_l = max(dot(normal, light_dir), 0.0);
     
-    return shadow_factor;
+    // Multiple bias techniques combined:
+    // 1. Base bias for floating point precision
+    let base_bias = 0.0002;
+    
+    // 2. Slope-dependent bias (higher bias for steep angles)
+    let slope_bias = 0.003 * sqrt(1.0 - n_dot_l * n_dot_l);
+    
+    // 3. Distance-dependent bias (objects further from light need more bias)
+    let light_distance = length(global.light_position - shadow_coord.xyz);
+    let distance_bias = 0.00001 * light_distance;
+    
+    let total_bias = base_bias + slope_bias + distance_bias;
+    
+    let texel_size = 1.0 / 2048.0;
+    
+    // Simple 2x2 PCF for basic soft shadows
+    let s1 = textureSampleCompare(shadow_map, shadow_sampler, 
+        shadow_coord.xy + vec2<f32>(-0.5, -0.5) * texel_size, 
+        shadow_coord.z - total_bias);
+    let s2 = textureSampleCompare(shadow_map, shadow_sampler, 
+        shadow_coord.xy + vec2<f32>(0.5, -0.5) * texel_size, 
+        shadow_coord.z - total_bias);
+    let s3 = textureSampleCompare(shadow_map, shadow_sampler, 
+        shadow_coord.xy + vec2<f32>(-0.5, 0.5) * texel_size, 
+        shadow_coord.z - total_bias);
+    let s4 = textureSampleCompare(shadow_map, shadow_sampler, 
+        shadow_coord.xy + vec2<f32>(0.5, 0.5) * texel_size, 
+        shadow_coord.z - total_bias);
+    
+    return (s1 + s2 + s3 + s4) / 4.0;
 }
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let albedo = material.base_color.rgb;
     let metallic = material.metallic;
-    let roughness = max(material.roughness, 0.04); // Prevent division by zero
+    let roughness = max(material.roughness, 0.04);
     
     let n = normalize(in.world_normal);
     let v = normalize(global.view_position.xyz - in.world_position);
@@ -136,7 +154,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let v_dot_h = max(dot(v, h), 0.0);
     
     // Calculate shadow factor
-    let shadow_factor = calculate_shadow(in.light_space_position);
+    let shadow_factor = calculate_shadow_simple_pcf(in.light_space_position, n, l);
     
     // Calculate F0 for dielectric/metallic materials
     let f0 = mix(vec3<f32>(0.04), albedo, metallic);
@@ -153,33 +171,41 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let ks = f;
     let kd = (vec3<f32>(1.0) - ks) * (1.0 - metallic);
     
-    // Lighting with shadow and distance attenuation
+    // APPROACH: Stronger directional contrast + secondary light source
+    
+    // Main light (stronger and more directional)
     let light_distance = length(global.light_position - in.world_position);
-    let attenuation = 1.0 / (1.0 + 0.02 * light_distance);
-    let radiance = global.light_color * global.light_intensity * attenuation * 10.0;
+    let attenuation = 1.0 / (1.0 + 0.015 * light_distance); // Slightly less falloff
+    let radiance = global.light_color * global.light_intensity * attenuation * 12.0; // Stronger main light
     
     let diffuse = albedo / 3.14159265;
-    let color = (kd * diffuse + specular) * radiance * n_dot_l * shadow_factor; // Apply shadow
+    let main_lighting = (kd * diffuse + specular) * radiance * n_dot_l * shadow_factor;
     
-    // Fresnel-based fake shadows for depth perception (reduced when in real shadow)
-    let fresnel_depth = 1.0 - n_dot_v;
-    let shadow_strength = 0.9 * shadow_factor; // Reduce fake shadows in real shadows
-    let fake_shadow = 1.0 - (fresnel_depth * shadow_strength);
+    // Secondary "fill" light from opposite direction (slightly stronger)
+    let fill_light_dir = normalize(vec3<f32>(-global.light_position.x, global.light_position.y * 0.5, -global.light_position.z));
+    let n_dot_fill = max(dot(n, fill_light_dir), 0.0);
+    let fill_strength = 0.3; // Slightly stronger fill light
+    let fill_lighting = (kd * diffuse) * global.light_color * fill_strength * n_dot_fill;
     
-    // Ambient lighting (slightly reduced in shadows)
-    let ambient_factor = mix(0.8, 1.0, shadow_factor); // Darker ambient in shadows
-    let ambient = vec3<f32>(0.15) * albedo * fake_shadow * ambient_factor;
-    let final_color = ambient + color;
+    // Slightly higher ambient
+    let ambient = vec3<f32>(0.10) * albedo; // Bumped from 0.08 to 0.10
     
-    // Add emissive
-    let result = final_color + material.emissive;
+    // Enhanced normal-based shading for surface detail
+    let normal_detail = abs(dot(n, normalize(vec3<f32>(1.0, 1.0, 1.0)))) * 0.1;
+    let detail_lighting = normal_detail * albedo;
     
-    // Tone mapping
-    let exposure = 0.8;
-    let mapped = 1.0 - exp(-result * exposure);
+    // Combine lighting with stronger contrast
+    let final_color = main_lighting + fill_lighting + ambient + detail_lighting + material.emissive;
+    
+    // Adjusted tone mapping to preserve contrast
+    let exposure = 0.9;
+    let mapped = 1.0 - exp(-final_color * exposure);
+    
+    // Slight contrast boost to make lighting more dramatic
+    let contrast_mapped = mapped * mapped * (3.0 - 2.0 * mapped); // S-curve for contrast
     
     // Gamma correction
-    let gamma_corrected = pow(mapped, vec3<f32>(1.0 / 2.2));
+    let gamma_corrected = pow(contrast_mapped, vec3<f32>(1.0 / 2.2));
     
     return vec4<f32>(gamma_corrected, material.base_color.a);
 }

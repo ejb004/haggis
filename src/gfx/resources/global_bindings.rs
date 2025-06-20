@@ -98,7 +98,7 @@ pub fn update_global_ubo_with_light(
     );
 
     // Tighter bounds for better precision
-    let light_proj = cgmath::ortho(-10.0, 10.0, -10.0, 10.0, 1.0, 20.0);
+    let light_proj = cgmath::ortho(-25.0, 25.0, -25.0, 25.0, 5.0, 50.0);
     let light_view_proj = light_proj * light_view;
 
     let content = GlobalUBOContent {
