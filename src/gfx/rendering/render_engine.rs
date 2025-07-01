@@ -132,7 +132,7 @@ impl RenderEngine {
         let depth_texture =
             TextureResource::create_depth_texture(&device, &config, "depth_texture");
 
-        let shadow_size = 2048u32;
+        let shadow_size = 1024u32 * 4u32;
 
         // 1. Create depth shadow map (for initial shadow rendering)
         let shadow_depth_texture = TextureResource::create_shadow_map(&device, shadow_size);
@@ -149,7 +149,7 @@ impl RenderEngine {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Rgba8Unorm,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING, // BOTH flags needed!
             view_formats: &[],
         });
 
@@ -235,7 +235,7 @@ impl RenderEngine {
                     ty: wgpu::BindingType::Texture {
                         multisampled: false,
                         view_dimension: wgpu::TextureViewDimension::D2,
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true }, // Must match Rgba8Unorm
                     },
                     count: None,
                 },
@@ -308,7 +308,7 @@ impl RenderEngine {
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&shadow_color_view), // Use blurred version
+                    resource: wgpu::BindingResource::TextureView(&blurred_shadow_view),
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
@@ -321,7 +321,7 @@ impl RenderEngine {
         let light_config = LightConfig {
             position: [20.0, 20.0, 20.0],
             color: [1.0, 1.0, 1.0],
-            intensity: 2.0,
+            intensity: 100.0,
         };
         let global_ubo = GlobalUBO::new(&device);
         let mut global_bindings = GlobalBindings::new(&device);
@@ -385,7 +385,6 @@ impl RenderEngine {
                     blend: None,
                     write_mask: wgpu::ColorWrites::ALL,
                 })]),
-            // No depth stencil since render pass doesn't have one for debugging
         );
 
         // Register depth to color conversion pass
@@ -416,8 +415,9 @@ impl RenderEngine {
                     blend: None,
                     write_mask: wgpu::ColorWrites::ALL,
                 })])
+                .with_cull_mode(None)
                 .with_primitive_topology(wgpu::PrimitiveTopology::TriangleList)
-                .with_no_vertex_buffers(),
+                .with_no_vertex_buffers(), // This is crucial!
         );
 
         // Register PBR pipeline with shadow support
@@ -543,29 +543,34 @@ impl RenderEngine {
         // The shadow pass now outputs depth directly to the shadow_color_texture
 
         // PASS 3: Blur the shadow map
-        // {
-        //     let mut blur_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-        //         label: Some("Shadow Blur Pass"),
-        //         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-        //             view: &self.blurred_shadow_view,
-        //             resolve_target: None,
-        //             ops: wgpu::Operations {
-        //                 load: wgpu::LoadOp::Clear(wgpu::Color::WHITE),
-        //                 store: wgpu::StoreOp::Store,
-        //             },
-        //         })],
-        //         depth_stencil_attachment: None,
-        //         occlusion_query_set: None,
-        //         timestamp_writes: None,
-        //     });
+        {
+            let mut blur_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Shadow Blur Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &self.blurred_shadow_view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                occlusion_query_set: None,
+                timestamp_writes: None,
+            });
 
-        //     blur_pass.set_bind_group(0, &self.blur_bind_group, &[]);
+            blur_pass.set_bind_group(0, &self.blur_bind_group, &[]);
 
-        //     if let Some(blur_pipeline) = self.pipeline_manager.get_pipeline("Blur") {
-        //         blur_pass.set_pipeline(blur_pipeline);
-        //         blur_pass.draw(0..3, 0..1);
-        //     }
-        // }
+            if let Some(blur_pipeline) = self.pipeline_manager.get_pipeline("Blur") {
+                blur_pass.set_pipeline(blur_pipeline);
+                println!("🔍 Blur pass: Pipeline set");
+                println!("🔍 Blur pass: About to draw fullscreen triangle");
+                blur_pass.draw(0..3, 0..1);
+                println!("🔍 Blur pass: Draw call completed");
+            } else {
+                println!("❌ Blur pipeline not found!");
+            }
+        }
 
         // PASS 4: Main rendering with shadows
         {

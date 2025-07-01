@@ -64,6 +64,11 @@ impl PipelineConfig {
         self
     }
 
+    pub fn with_cull_mode(mut self, face: Option<Face>) -> Self {
+        self.cull_mode = face;
+        self
+    }
+
     pub fn with_vertex_only(mut self) -> Self {
         self.vertex_only = true;
         self

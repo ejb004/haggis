@@ -1,5 +1,4 @@
-// Proper shadow pass shader - renders depth as color for shadow mapping
-
+// Shadow depth pass - renders scene from light's perspective
 struct GlobalUniform {
     view_position: vec4<f32>,
     view_proj: mat4x4<f32>,
@@ -24,32 +23,23 @@ struct VertexInput {
 
 struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
-    @location(0) depth: f32,
 };
 
 @vertex
 fn vs_main(model: VertexInput) -> VertexOutput {
     var out: VertexOutput;
     
-    // Transform vertex to world space
     let world_position = transform.model * vec4<f32>(model.position, 1.0);
-    
-    // Transform to light's view space for shadow mapping
     out.clip_position = global.light_view_proj * world_position;
-    
-    // Pass the depth value to fragment shader
-    // Normalize from [-1, 1] to [0, 1] range
-    out.depth = out.clip_position.z / out.clip_position.w;
     
     return out;
 }
 
-@fragment  
+@fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    // Convert depth from [-1, 1] to [0, 1] range
-    let normalized_depth = in.depth * 0.5 + 0.5;
+    // Store linear depth in red channel
+    let depth = in.clip_position.z / in.clip_position.w;
+    let linear_depth = depth * 0.5 + 0.5; // Convert from [-1,1] to [0,1]
     
-    // Store depth as grayscale color
-    // Closer objects = darker values, farther objects = lighter values
-    return vec4<f32>(normalized_depth, normalized_depth, normalized_depth, 1.0);
+    return vec4<f32>(linear_depth, 0.0, 0.0, 1.0);
 }

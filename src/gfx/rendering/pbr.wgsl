@@ -1,5 +1,3 @@
-// PBR shader with simple shadow sampling (shadow map is pre-blurred)
-
 struct GlobalUniform {
     view_position: vec4<f32>,
     view_proj: mat4x4<f32>,
@@ -45,24 +43,26 @@ struct VertexOutput {
 @vertex
 fn vs_main(model: VertexInput) -> VertexOutput {
     var out: VertexOutput;
-    
-    let world_position: vec4<f32> = transform.model * vec4<f32>(model.position, 1.0);
-    
+
+    let world_position = transform.model * vec4<f32>(model.position, 1.0);
     out.world_position = world_position.xyz;
     out.clip_position = global.view_proj * world_position;
     out.light_space_position = global.light_view_proj * world_position;
-    
+
     let normal_matrix = mat3x3<f32>(
         normalize(transform.model[0].xyz),
         normalize(transform.model[1].xyz),
         normalize(transform.model[2].xyz)
     );
     out.world_normal = normalize(normal_matrix * model.normal);
-    
+
     return out;
 }
 
-// PBR utility functions
+fn fresnel_schlick(cos_theta: f32, f0: vec3<f32>) -> vec3<f32> {
+    return f0 + (vec3<f32>(1.0) - f0) * pow(clamp(1.0 - cos_theta, 0.0, 1.0), 5.0);
+}
+
 fn distribution_ggx(n_dot_h: f32, roughness: f32) -> f32 {
     let a = roughness * roughness;
     let a2 = a * a;
@@ -70,122 +70,102 @@ fn distribution_ggx(n_dot_h: f32, roughness: f32) -> f32 {
     return a2 / (3.14159265 * denom * denom);
 }
 
-fn geometry_schlick_ggx(n_dot_v: f32, roughness: f32) -> f32 {
+fn geometry_smith(n_dot_v: f32, n_dot_l: f32, roughness: f32) -> f32 {
     let r = roughness + 1.0;
     let k = (r * r) / 8.0;
-    return n_dot_v / (n_dot_v * (1.0 - k) + k);
-}
-
-fn geometry_smith(n_dot_v: f32, n_dot_l: f32, roughness: f32) -> f32 {
-    let ggx2 = geometry_schlick_ggx(n_dot_v, roughness);
-    let ggx1 = geometry_schlick_ggx(n_dot_l, roughness);
+    let ggx2 = n_dot_v / (n_dot_v * (1.0 - k) + k);
+    let ggx1 = n_dot_l / (n_dot_l * (1.0 - k) + k);
     return ggx1 * ggx2;
 }
 
-fn fresnel_schlick(cos_theta: f32, f0: vec3<f32>) -> vec3<f32> {
-    return f0 + (vec3<f32>(1.0) - f0) * pow(1.0 - cos_theta, 5.0);
-}
+fn calculate_shadow(in: VertexOutput, light_dir: vec3<f32>) -> f32 {
+    let ndc = in.light_space_position.xyz / in.light_space_position.w;
+    let shadow_coord = vec2<f32>(ndc.x * 0.5 + 0.5, -ndc.y * 0.5 + 0.5);
 
-// Fixed shadow sampling to work with proper depth-as-color shadow map
-fn calculate_shadow_simple(light_space_pos: vec4<f32>, normal: vec3<f32>, light_dir: vec3<f32>) -> f32 {
-    // Perspective divide
-    var ndc = light_space_pos.xyz / light_space_pos.w;
-    
-    // Transform from NDC [-1, 1] to texture coordinates [0, 1]
-    let shadow_coord = vec3<f32>(
-        ndc.x * 0.5 + 0.5,
-        -ndc.y * 0.5 + 0.5,
-        ndc.z * 0.5 + 0.5
-    );
-    
-    // Outside shadow map = no shadow
     if (shadow_coord.x < 0.0 || shadow_coord.x > 1.0 || 
-        shadow_coord.y < 0.0 || shadow_coord.y > 1.0 || 
-        shadow_coord.z < 0.0 || shadow_coord.z > 1.0) {
+        shadow_coord.y < 0.0 || shadow_coord.y > 1.0) {
         return 1.0;
     }
+
+    let current_depth = ndc.z * 0.5 + 0.5;
+    let bias = 0.001;
+
+    // 2x2 tap to smooth out remaining blockiness from blur
+    let texel_size = 1.0 / 2048.0;
+    let offsets = array<vec2<f32>, 4>(
+        vec2<f32>(-0.25, -0.25) * texel_size,
+        vec2<f32>(0.25, -0.25) * texel_size,
+        vec2<f32>(-0.25, 0.25) * texel_size,
+        vec2<f32>(0.25, 0.25) * texel_size
+    );
     
-    // Sample the shadow map depth (stored as color)
-    let shadow_depth = textureSample(shadow_map, shadow_sampler, shadow_coord.xy).r;
-    
-    // Current fragment's depth in light space (same normalization as shadow map)
-    let current_depth = shadow_coord.z;
-    
-    // Bias to prevent shadow acne
-    let n_dot_l = max(dot(normal, light_dir), 0.0);
-    let bias = 0.005 * (1.0 - n_dot_l);
-    
-    // Shadow test: if current depth > shadow depth, we're in shadow
-    if (current_depth - bias > shadow_depth) {
-        return 0.3; // In shadow
-    } else {
-        return 1.0; // Not in shadow
+    var shadow_sum = 0.0;
+    for (var i = 0; i < 4; i++) {
+        let stored_depth = textureSample(shadow_map, shadow_sampler, shadow_coord + offsets[i]).r;
+        let shadow_diff = current_depth - stored_depth - bias;
+        
+        if (shadow_diff <= 0.0) {
+            shadow_sum += 1.0; // No shadow
+        } else {
+            // Wider smoothstep range for softer transitions
+            let shadow_factor = smoothstep(0.0, 0.02, shadow_diff);
+            shadow_sum += mix(1.0, 0.15, shadow_factor);
+        }
     }
+    
+    return shadow_sum / 10.0;
 }
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    let normal = normalize(in.world_normal);
+    let view_dir = normalize(global.view_position.xyz - in.world_position);
+    let light_dir = normalize(global.light_position - in.world_position);
+    let halfway_dir = normalize(view_dir + light_dir);
+
     let albedo = material.base_color.rgb;
     let metallic = material.metallic;
     let roughness = max(material.roughness, 0.04);
     
-    let n = normalize(in.world_normal);
-    let v = normalize(global.view_position.xyz - in.world_position);
-    let l = normalize(global.light_position - in.world_position);
-    let h = normalize(v + l);
-    
-    let n_dot_v = max(dot(n, v), 0.0);
-    let n_dot_l = max(dot(n, l), 0.0);
-    let n_dot_h = max(dot(n, h), 0.0);
-    let v_dot_h = max(dot(v, h), 0.0);
-    
-    // Calculate shadow factor
-    let shadow_factor = calculate_shadow_simple(in.light_space_position, n, l);
-    
-    // Calculate F0 for dielectric/metallic materials
-    let f0 = mix(vec3<f32>(0.04), albedo, metallic);
-    
-    // Cook-Torrance BRDF
-    let d = distribution_ggx(n_dot_h, roughness);
+    // Proper metallic workflow - metallic materials have high F0
+    let dielectric_f0 = vec3<f32>(0.04);
+    let f0 = mix(dielectric_f0, albedo, metallic);
+
+    let n_dot_v = max(dot(normal, view_dir), 0.0);
+    let n_dot_l = max(dot(normal, light_dir), 0.0);
+    let n_dot_h = max(dot(normal, halfway_dir), 0.0);
+    let v_dot_h = max(dot(view_dir, halfway_dir), 0.0);
+
+    let ndf = distribution_ggx(n_dot_h, roughness);
     let g = geometry_smith(n_dot_v, n_dot_l, roughness);
-    let f = fresnel_schlick(v_dot_h, f0);
-    
-    let numerator = d * g * f;
-    let denominator = 4.0 * n_dot_v * n_dot_l + 0.001;
+    let f = fresnel_schlick(v_dot_h, f0); // Removed artificial scaling
+
+    let numerator = ndf * g * f;
+    let denominator = 4.0 * n_dot_v * n_dot_l + 0.0001;
     let specular = numerator / denominator;
-    
+
+    // Energy conservation - metallic surfaces have no diffuse
     let ks = f;
     let kd = (vec3<f32>(1.0) - ks) * (1.0 - metallic);
-    
-    // Main light calculation
-    let light_distance = length(global.light_position - in.world_position);
-    let attenuation = 1.0 / (1.0 + 0.015 * light_distance);
-    let radiance = global.light_color * global.light_intensity * attenuation * 12.0;
-    
-    let diffuse = albedo / 3.14159265;
-    let main_lighting = (kd * diffuse + specular) * radiance * n_dot_l * shadow_factor;
-    
-    // Secondary fill light
-    let fill_light_dir = normalize(vec3<f32>(-global.light_position.x, global.light_position.y * 0.5, -global.light_position.z));
-    let n_dot_fill = max(dot(n, fill_light_dir), 0.0);
-    let fill_strength = 0.3;
-    let fill_lighting = (kd * diffuse) * global.light_color * fill_strength * n_dot_fill;
-    
-    // Ambient lighting
-    let ambient = vec3<f32>(0.10) * albedo;
-    
-    // Enhanced normal-based shading for surface detail
-    let normal_detail = abs(dot(n, normalize(vec3<f32>(1.0, 1.0, 1.0)))) * 0.1;
-    let detail_lighting = normal_detail * albedo;
-    
-    // Combine lighting
-    let final_color = main_lighting + fill_lighting + ambient + detail_lighting + material.emissive;
-    
+    let diffuse = kd * albedo / 3.14159265;
+
+    let distance = length(global.light_position - in.world_position);
+    let attenuation = 1.0 / (distance * distance);
+    let radiance = global.light_color * global.light_intensity * attenuation * 5.0;
+
+    let shadow_factor = calculate_shadow(in, light_dir);
+    let ambient = vec3<f32>(0.15) * albedo * (1.0 - metallic * 0.3); // Brighter ambient
+    let lo = (diffuse + specular) * radiance * n_dot_l * shadow_factor;
+
+    // Subtle rim lighting only for non-metals
+    let rim = pow(1.0 - max(dot(normal, view_dir), 0.0), 3.0);
+    let rim_light = rim * 0.3 * global.light_color * (1.0 - metallic); // Brighter rim
+
+    let color = ambient + lo + material.emissive + rim_light;
+
     // Tone mapping and gamma correction
-    let exposure = 0.9;
-    let mapped = 1.0 - exp(-final_color * exposure);
-    let contrast_mapped = mapped * mapped * (3.0 - 2.0 * mapped);
-    let gamma_corrected = pow(contrast_mapped, vec3<f32>(1.0 / 2.2));
-    
+    let mapped = color / (color + vec3<f32>(1.0));
+    let gamma_corrected = pow(mapped, vec3<f32>(1.0 / 2.2));
+
     return vec4<f32>(gamma_corrected, material.base_color.a);
 }
