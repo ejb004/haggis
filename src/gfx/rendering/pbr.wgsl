@@ -90,7 +90,6 @@ fn calculate_shadow(in: VertexOutput, light_dir: vec3<f32>) -> f32 {
     let current_depth = ndc.z * 0.5 + 0.5;
     let bias = 0.001;
 
-    // 2x2 tap to smooth out remaining blockiness from blur
     let texel_size = 1.0 / 2048.0;
     let offsets = array<vec2<f32>, 4>(
         vec2<f32>(-0.25, -0.25) * texel_size,
@@ -98,23 +97,25 @@ fn calculate_shadow(in: VertexOutput, light_dir: vec3<f32>) -> f32 {
         vec2<f32>(-0.25, 0.25) * texel_size,
         vec2<f32>(0.25, 0.25) * texel_size
     );
-    
+
     var shadow_sum = 0.0;
     for (var i = 0; i < 4; i++) {
         let stored_depth = textureSample(shadow_map, shadow_sampler, shadow_coord + offsets[i]).r;
         let shadow_diff = current_depth - stored_depth - bias;
-        
+
         if (shadow_diff <= 0.0) {
-            shadow_sum += 1.0; // No shadow
+            shadow_sum += 1.0;
         } else {
-            // Wider smoothstep range for softer transitions
-            let shadow_factor = smoothstep(0.0, 0.02, shadow_diff);
-            shadow_sum += mix(1.0, 0.15, shadow_factor);
+            let softness = 50.0; // controls exponential falloff softness
+            let attenuation = exp(-shadow_diff * softness);
+            let min_light = 0.15;
+            shadow_sum += mix(min_light, 1.0, attenuation);
         }
     }
-    
-    return shadow_sum / 10.0;
+
+    return shadow_sum / 4.0;
 }
+
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
@@ -161,7 +162,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let rim = pow(1.0 - max(dot(normal, view_dir), 0.0), 3.0);
     let rim_light = rim * 0.3 * global.light_color * (1.0 - metallic); // Brighter rim
 
-    let color = ambient + lo + material.emissive + rim_light;
+    let color = (ambient + lo + material.emissive + rim_light) * (shadow_factor + 0.5) / 2.0;
 
     // Tone mapping and gamma correction
     let mapped = color / (color + vec3<f32>(1.0));

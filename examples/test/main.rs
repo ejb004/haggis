@@ -18,11 +18,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     haggis
         .app_state
         .scene
-        .add_material_rgb("red", 0.6, 0.1, 0.1, 0.2, 0.4); // red plastic
+        .add_material_rgb("red", 0.9, 0.01, 0.01, 0.8, 0.4); // red plastic
 
     haggis
         .add_object("examples/test/f1.obj")
         .with_material("red") // Assign steel material
+        .with_transform([0.0, -0.665, 0.0], 0.8, -30.0);
+    haggis
+        .add_object("examples/test/cube.obj")
+        .with_material("gold") // Assign steel material
         .with_transform([0.0, -0.665, 0.0], 0.8, -30.0);
 
     haggis
@@ -35,7 +39,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         default_transform_panel(ui, scene, selected_index);
     });
 
-    haggis.attach_simulation(SimplyMove::new());
+    // haggis.attach_simulation(SimplyMove::new());
 
     // haggis.attach_simulation(
     //     haggis::simulation::examples::gpu::simply_move_gpu::GpuSimplyMove::new(),

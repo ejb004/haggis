@@ -132,7 +132,7 @@ impl RenderEngine {
         let depth_texture =
             TextureResource::create_depth_texture(&device, &config, "depth_texture");
 
-        let shadow_size = 1024u32 * 4u32;
+        let shadow_size = 1024u32 * 2u32;
 
         // 1. Create depth shadow map (for initial shadow rendering)
         let shadow_depth_texture = TextureResource::create_shadow_map(&device, shadow_size);
