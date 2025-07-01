@@ -6,7 +6,7 @@
 
 // TODO: Add simulation traits and managers
 pub mod cpu;
+pub mod examples;
+pub mod gpu;
 pub mod manager;
 pub mod traits;
-// pub mod gpu;
-pub mod examples;

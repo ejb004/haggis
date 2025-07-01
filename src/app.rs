@@ -278,6 +278,12 @@ impl ApplicationHandler for AppState {
 
             self.ui_manager = Some(ui_manager);
             self.render_engine = Some(renderer);
+
+            // Initialize GPU resources for current simulation
+            if let Some(render_engine) = &self.render_engine {
+                self.simulation_manager
+                    .initialize_gpu(render_engine.device(), render_engine.queue());
+            }
         }
     }
 
@@ -363,7 +369,7 @@ impl ApplicationHandler for AppState {
                 event_loop.exit();
             }
             WindowEvent::RedrawRequested => {
-                let Some(_) = self.render_engine.as_ref() else {
+                let Some(render_engine) = self.render_engine.as_mut() else {
                     return;
                 };
 
@@ -372,11 +378,15 @@ impl ApplicationHandler for AppState {
                 let delta_time = 0.016; // Approximate 60 FPS - replace with actual timing
 
                 // Update simulation before scene update
-                self.simulation_manager.update(delta_time, &mut self.scene);
+                self.simulation_manager.update(
+                    delta_time,
+                    &mut self.scene,
+                    Some(render_engine.device()),
+                    Some(render_engine.queue()),
+                );
 
                 // Update phase: Scene logic and UI interaction
                 self.scene.update();
-
                 if let (Some(ui_manager), Some(ui_callback)) =
                     (self.ui_manager.as_mut(), &self.ui_callback)
                 {
@@ -428,7 +438,7 @@ impl ApplicationHandler for AppState {
                     );
                 } else {
                     // Render 3D scene only
-                    render_engine.render_frame(&self.scene);
+                    render_engine.render_frame_simple(&self.scene);
                 }
             }
             _ => (),

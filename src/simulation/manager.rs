@@ -6,6 +6,7 @@
 use super::traits::Simulation;
 use crate::gfx::scene::Scene;
 use imgui::Ui;
+use wgpu::{Device, Queue};
 
 /// Manages user simulations within the Haggis engine
 pub struct SimulationManager {
@@ -13,7 +14,7 @@ pub struct SimulationManager {
     is_paused: bool,
     time_scale: f32,
     accumulated_time: f32,
-    fixed_timestep: Option<f32>, // For deterministic simulations
+    fixed_timestep: Option<f32>,
 }
 
 impl SimulationManager {
@@ -29,10 +30,6 @@ impl SimulationManager {
     }
 
     /// Attach a user simulation to the engine
-    ///
-    /// # Arguments
-    /// * `simulation` - Boxed simulation implementing the Simulation trait
-    /// * `scene` - Scene to initialize the simulation with
     pub fn attach_simulation(&mut self, mut simulation: Box<dyn Simulation>, scene: &mut Scene) {
         // Clean up previous simulation if any
         if let Some(mut old_sim) = self.simulation.take() {
@@ -45,10 +42,15 @@ impl SimulationManager {
         self.is_paused = false;
     }
 
+    /// Initialize GPU resources for current simulation
+    /// Called when device/queue become available (e.g., on WindowEvent::Resumed)
+    pub fn initialize_gpu(&mut self, device: &Device, queue: &Queue) {
+        if let Some(simulation) = &mut self.simulation {
+            simulation.initialize_gpu(device, queue);
+        }
+    }
+
     /// Remove current simulation
-    ///
-    /// # Arguments
-    /// * `scene` - Scene to clean up simulation resources from
     pub fn detach_simulation(&mut self, scene: &mut Scene) {
         if let Some(mut sim) = self.simulation.take() {
             sim.cleanup(scene);
@@ -56,11 +58,13 @@ impl SimulationManager {
     }
 
     /// Update simulation (called every frame)
-    ///
-    /// # Arguments
-    /// * `delta_time` - Time elapsed since last frame in seconds
-    /// * `scene` - Scene to update with simulation results
-    pub fn update(&mut self, delta_time: f32, scene: &mut Scene) {
+    pub fn update(
+        &mut self,
+        delta_time: f32,
+        scene: &mut Scene,
+        device: Option<&Device>,
+        queue: Option<&Queue>,
+    ) {
         if self.is_paused {
             return;
         }
@@ -74,20 +78,29 @@ impl SimulationManager {
 
                 while self.accumulated_time >= fixed_dt {
                     simulation.update(fixed_dt, scene);
+
+                    // GPU update if available
+                    if let (Some(device), Some(queue)) = (device, queue) {
+                        simulation.update_gpu(device, queue, fixed_dt);
+                        simulation.apply_gpu_results_to_scene(device, scene);
+                    }
+
                     self.accumulated_time -= fixed_dt;
                 }
             } else {
                 // Variable timestep
                 simulation.update(scaled_delta, scene);
+
+                // GPU update if available
+                if let (Some(device), Some(queue)) = (device, queue) {
+                    simulation.update_gpu(device, queue, scaled_delta);
+                    simulation.apply_gpu_results_to_scene(device, scene);
+                }
             }
         }
     }
 
     /// Render simulation UI controls
-    ///
-    /// # Arguments
-    /// * `ui` - ImGui UI context
-    /// * `scene` - Scene reference for simulation UI
     pub fn render_ui(&mut self, ui: &Ui, scene: &mut Scene) {
         let display_size = ui.io().display_size;
         let panel_width = 300.0;
@@ -100,6 +113,14 @@ impl SimulationManager {
                 .position([panel_x, 240.0], imgui::Condition::FirstUseEver) // Stack below SimplyMove panel
                 .build(|| {
                     ui.text(&format!("Simulation: {}", simulation.name()));
+
+                    // Show GPU status
+                    if simulation.is_gpu_ready() {
+                        ui.text_colored([0.0, 1.0, 0.0, 1.0], "🔹 GPU Ready");
+                    } else {
+                        ui.text_colored([0.7, 0.7, 0.7, 1.0], "💻 CPU Only");
+                    }
+
                     ui.separator();
 
                     // Play/Pause controls

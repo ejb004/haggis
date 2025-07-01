@@ -22,7 +22,8 @@ pub struct PipelineConfig {
     pub depth_texture: Option<Texture>,
     pub multisample: MultisampleState,
     pub color_targets: Vec<Option<ColorTargetState>>,
-    pub vertex_only: bool, //for shadow pass
+    pub vertex_only: bool,       //for shadow pass
+    pub no_vertex_buffers: bool, // NEW: for fullscreen quads
 }
 
 impl Default for PipelineConfig {
@@ -41,6 +42,7 @@ impl Default for PipelineConfig {
                 write_mask: ColorWrites::ALL,
             })],
             vertex_only: false,
+            no_vertex_buffers: false, // NEW
         }
     }
 }
@@ -91,6 +93,32 @@ impl PipelineConfig {
     /// * `texture` - Depth texture to use for depth testing
     pub fn with_depth_stencil(mut self, texture: Texture) -> Self {
         self.depth_texture = Some(texture);
+        self
+    }
+
+    /// Sets color targets for this pipeline (builder pattern)
+    ///
+    /// # Arguments
+    /// * `targets` - Vector of color target states
+    pub fn with_color_targets(mut self, targets: Vec<Option<ColorTargetState>>) -> Self {
+        self.color_targets = targets;
+        self
+    }
+
+    /// Sets primitive topology for this pipeline (builder pattern)
+    ///
+    /// # Arguments
+    /// * `topology` - Primitive topology (TriangleList, etc.)
+    pub fn with_primitive_topology(mut self, topology: PrimitiveTopology) -> Self {
+        self.primitive_topology = topology;
+        self
+    }
+
+    /// Configures pipeline for fullscreen quad rendering (no vertex buffers needed)
+    ///
+    /// Used for post-processing effects like blur passes
+    pub fn with_no_vertex_buffers(mut self) -> Self {
+        self.no_vertex_buffers = true;
         self
     }
 }
@@ -295,7 +323,6 @@ impl PipelineManager {
     }
 
     /// Creates a render pipeline from configuration
-    /// Creates a render pipeline from configuration
     fn create_pipeline_from_config(
         &self,
         name: &str,
@@ -328,6 +355,25 @@ impl PipelineManager {
             })
         };
 
+        // Handle vertex buffers - use empty slice for fullscreen quads
+        let vertex_buffers: &[VertexBufferLayout] = if config.no_vertex_buffers {
+            &[] // No vertex buffers for fullscreen quads
+        } else {
+            &[Vertex3D::desc()]
+        };
+
+        // Handle depth stencil - only if depth texture is provided
+        let depth_stencil = config
+            .depth_texture
+            .as_ref()
+            .map(|texture| DepthStencilState {
+                format: texture.format(),
+                depth_write_enabled: true,
+                depth_compare: CompareFunction::Less,
+                stencil: StencilState::default(),
+                bias: DepthBiasState::default(),
+            });
+
         let pipeline = self
             .device
             .create_render_pipeline(&RenderPipelineDescriptor {
@@ -336,10 +382,10 @@ impl PipelineManager {
                 vertex: VertexState {
                     module: shader,
                     entry_point: Some("vs_main"),
-                    buffers: &[Vertex3D::desc()],
+                    buffers: vertex_buffers, // Now respects no_vertex_buffers flag
                     compilation_options: PipelineCompilationOptions::default(),
                 },
-                fragment: fragment_state, // Now respects vertex_only flag
+                fragment: fragment_state, // Respects vertex_only flag
                 primitive: PrimitiveState {
                     topology: config.primitive_topology,
                     strip_index_format: None,
@@ -349,13 +395,7 @@ impl PipelineManager {
                     unclipped_depth: false,
                     conservative: false,
                 },
-                depth_stencil: Some(DepthStencilState {
-                    format: config.depth_texture.as_ref().unwrap().format(),
-                    depth_write_enabled: true,
-                    depth_compare: CompareFunction::Less,
-                    stencil: StencilState::default(),
-                    bias: DepthBiasState::default(),
-                }),
+                depth_stencil, // Now optional
                 multisample: config.multisample,
                 multiview: None,
                 cache: None,

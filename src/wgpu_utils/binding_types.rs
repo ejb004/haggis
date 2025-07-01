@@ -1,8 +1,5 @@
-//
-//
-// LIST OF WGPU BINDING TYPES TO BE USED WHEN CREATING BIND GROUPS
-//
-//
+// src/wgpu_utils/binding_types.rs - Enhanced with compute types
+//! WGPU binding type utilities
 
 pub fn buffer(read_only: bool) -> wgpu::BindingType {
     wgpu::BindingType::Buffer {
@@ -10,6 +7,14 @@ pub fn buffer(read_only: bool) -> wgpu::BindingType {
         has_dynamic_offset: false,
         min_binding_size: None,
     }
+}
+
+pub fn storage_buffer_read_write() -> wgpu::BindingType {
+    buffer(false)
+}
+
+pub fn storage_buffer_read_only() -> wgpu::BindingType {
+    buffer(true)
 }
 
 pub fn uniform() -> wgpu::BindingType {
@@ -95,7 +100,7 @@ pub fn image2D(
     wgpu::BindingType::StorageTexture {
         access,
         view_dimension: wgpu::TextureViewDimension::D2,
-        format: format,
+        format,
     }
 }
 
@@ -106,7 +111,7 @@ pub fn image2DArray(
     wgpu::BindingType::StorageTexture {
         access,
         view_dimension: wgpu::TextureViewDimension::D2Array,
-        format: format,
+        format,
     }
 }
 
@@ -117,6 +122,19 @@ pub fn image3D(
     wgpu::BindingType::StorageTexture {
         access,
         view_dimension: wgpu::TextureViewDimension::D3,
-        format: format,
+        format,
     }
+}
+
+// Additional compute-specific helpers
+pub fn compute_storage_read_write() -> wgpu::BindingType {
+    storage_buffer_read_write()
+}
+
+pub fn compute_storage_read_only() -> wgpu::BindingType {
+    storage_buffer_read_only()
+}
+
+pub fn compute_uniform() -> wgpu::BindingType {
+    uniform()
 }

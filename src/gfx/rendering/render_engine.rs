@@ -1,7 +1,7 @@
 //! WGPU-based rendering engine for the Haggis 3D engine
 //!
 //! Provides high-level rendering functionality built on top of wgpu, including
-//! pipeline management, depth testing, shadow mapping, and UI overlay support.
+//! pipeline management, depth testing, shadow mapping with blur, and UI overlay support.
 
 use std::{iter, sync::Arc};
 use wgpu::{Device, TextureFormat};
@@ -23,7 +23,7 @@ use super::pipeline_manager::{PipelineConfig, PipelineManager};
 /// - Surface and device management
 /// - Pipeline creation and management  
 /// - Depth buffer handling
-/// - Shadow mapping
+/// - Shadow mapping with gaussian blur
 /// - Camera uniform updates
 /// - UI overlay rendering
 pub struct RenderEngine {
@@ -38,9 +38,21 @@ pub struct RenderEngine {
     global_bindings: GlobalBindings,
 
     // Shadow mapping resources
-    shadow_texture: TextureResource,
-    shadow_bind_group: wgpu::BindGroup,
-    shadow_bind_group_layout: wgpu::BindGroupLayout,
+    shadow_depth_texture: TextureResource, // Original depth shadow map
+    shadow_color_texture: wgpu::Texture,   // Depth converted to color
+    shadow_color_view: wgpu::TextureView,
+    blurred_shadow_texture: wgpu::Texture, // Final blurred shadow
+    blurred_shadow_view: wgpu::TextureView,
+
+    // Bind groups and layouts
+    shadow_bind_group: wgpu::BindGroup, // For final rendering
+    depth_to_color_bind_group: wgpu::BindGroup, // For depth conversion
+    blur_bind_group: wgpu::BindGroup,   // For blur pass
+
+    // Samplers
+    depth_sampler: wgpu::Sampler,
+    color_sampler: wgpu::Sampler,
+
     light_config: LightConfig,
 }
 
@@ -48,7 +60,7 @@ impl RenderEngine {
     /// Creates a new render engine for the given window
     ///
     /// Initializes wgpu with default settings, creates depth and shadow buffers,
-    /// and sets up the PBR rendering pipeline with shadow mapping support.
+    /// sets up the PBR rendering pipeline with blurred shadow mapping support.
     ///
     /// # Arguments
     /// * `window` - Window surface target for rendering
@@ -56,7 +68,7 @@ impl RenderEngine {
     /// * `height` - Initial surface height in pixels
     ///
     /// # Returns
-    /// Configured RenderEngine ready for rendering with shadows
+    /// Configured RenderEngine ready for rendering with blurred shadows
     ///
     /// # Panics
     /// Panics if unable to create wgpu adapter or device
@@ -120,14 +132,80 @@ impl RenderEngine {
         let depth_texture =
             TextureResource::create_depth_texture(&device, &config, "depth_texture");
 
-        // Create shadow map texture
         let shadow_size = 2048u32;
-        let shadow_texture = TextureResource::create_shadow_map(&device, shadow_size);
 
-        // Create shadow bind group layout
-        let shadow_bind_group_layout =
+        // 1. Create depth shadow map (for initial shadow rendering)
+        let shadow_depth_texture = TextureResource::create_shadow_map(&device, shadow_size);
+
+        // 2. Create color texture for depth-to-color conversion
+        let shadow_color_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("Shadow Color Texture"),
+            size: wgpu::Extent3d {
+                width: shadow_size,
+                height: shadow_size,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+
+        let shadow_color_view =
+            shadow_color_texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+        // 3. Create blurred shadow texture
+        let blurred_shadow_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("Blurred Shadow Texture"),
+            size: wgpu::Extent3d {
+                width: shadow_size,
+                height: shadow_size,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+
+        let blurred_shadow_view =
+            blurred_shadow_texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+        // 4. Create samplers
+        let depth_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Nearest,
+            min_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::FilterMode::Nearest,
+            compare: None,
+            lod_min_clamp: 0.0,
+            lod_max_clamp: 32.0,
+            ..Default::default()
+        });
+
+        let color_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::FilterMode::Nearest,
+            compare: None,
+            lod_min_clamp: 0.0,
+            lod_max_clamp: 32.0,
+            ..Default::default()
+        });
+
+        // 5. Create bind group layouts
+        let depth_to_color_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("Shadow Bind Group Layout"),
+                label: Some("Depth to Color Layout"),
                 entries: &[
                     wgpu::BindGroupLayoutEntry {
                         binding: 0,
@@ -142,31 +220,106 @@ impl RenderEngine {
                     wgpu::BindGroupLayoutEntry {
                         binding: 1,
                         visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Comparison),
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::NonFiltering),
                         count: None,
                     },
                 ],
             });
 
-        // Create shadow bind group
-        let shadow_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Shadow Bind Group"),
-            layout: &shadow_bind_group_layout,
+        let blur_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Blur Layout"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        multisampled: false,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+            ],
+        });
+
+        let shadow_final_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Shadow Final Layout"),
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            multisampled: false,
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                ],
+            });
+
+        // 6. Create bind groups
+        let depth_to_color_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Depth to Color Bind Group"),
+            layout: &depth_to_color_layout,
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&shadow_texture.view),
+                    resource: wgpu::BindingResource::TextureView(&shadow_depth_texture.view),
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&shadow_texture.sampler),
+                    resource: wgpu::BindingResource::Sampler(&depth_sampler),
+                },
+            ],
+        });
+
+        let blur_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Blur Bind Group"),
+            layout: &blur_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&shadow_color_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&color_sampler),
+                },
+            ],
+        });
+
+        let shadow_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Shadow Bind Group"),
+            layout: &shadow_final_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&shadow_color_view), // Use blurred version
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&color_sampler),
                 },
             ],
         });
 
         // Initialize global uniform bindings for camera and lighting
         let light_config = LightConfig {
-            position: [20.0, 20.0, 20.0], // More diagonal, better for seeing shadows
+            position: [20.0, 20.0, 20.0],
             color: [1.0, 1.0, 1.0],
             intensity: 2.0,
         };
@@ -213,6 +366,59 @@ impl RenderEngine {
         // Load shaders
         let _ = pipeline_manager.load_shader("default", include_str!("pbr.wgsl"));
         let _ = pipeline_manager.load_shader("shadow", include_str!("shadow_pass.wgsl"));
+        let _ = pipeline_manager.load_shader("depth_to_color", include_str!("depth_to_color.wgsl"));
+        let _ = pipeline_manager.load_shader("blur", include_str!("shadow_blur.wgsl"));
+
+        // Register shadow depth pass (NO DEPTH ATTACHMENT FOR DEBUGGING)
+        pipeline_manager.register_pipeline(
+            "Shadow",
+            PipelineConfig::default()
+                .with_label("SHADOW")
+                .with_shader("shadow")
+                .with_depth_stencil(shadow_depth_texture.texture.clone())
+                .with_bind_group_layouts(vec![
+                    global_bindings.bind_group_layouts().clone(),
+                    transform_bind_group_layout.clone(),
+                ])
+                .with_color_targets(vec![Some(wgpu::ColorTargetState {
+                    format: wgpu::TextureFormat::Rgba8Unorm,
+                    blend: None,
+                    write_mask: wgpu::ColorWrites::ALL,
+                })]),
+            // No depth stencil since render pass doesn't have one for debugging
+        );
+
+        // Register depth to color conversion pass
+        pipeline_manager.register_pipeline(
+            "DepthToColor",
+            PipelineConfig::default()
+                .with_label("DEPTH_TO_COLOR")
+                .with_shader("depth_to_color")
+                .with_bind_group_layouts(vec![depth_to_color_layout])
+                .with_color_targets(vec![Some(wgpu::ColorTargetState {
+                    format: wgpu::TextureFormat::Rgba8Unorm,
+                    blend: None,
+                    write_mask: wgpu::ColorWrites::ALL,
+                })])
+                .with_primitive_topology(wgpu::PrimitiveTopology::TriangleList)
+                .with_no_vertex_buffers(),
+        );
+
+        // Register blur pass
+        pipeline_manager.register_pipeline(
+            "Blur",
+            PipelineConfig::default()
+                .with_label("BLUR")
+                .with_shader("blur")
+                .with_bind_group_layouts(vec![blur_layout])
+                .with_color_targets(vec![Some(wgpu::ColorTargetState {
+                    format: wgpu::TextureFormat::Rgba8Unorm,
+                    blend: None,
+                    write_mask: wgpu::ColorWrites::ALL,
+                })])
+                .with_primitive_topology(wgpu::PrimitiveTopology::TriangleList)
+                .with_no_vertex_buffers(),
+        );
 
         // Register PBR pipeline with shadow support
         pipeline_manager.register_pipeline(
@@ -222,24 +428,10 @@ impl RenderEngine {
                 .with_depth_stencil(depth_texture.texture.clone())
                 .with_bind_group_layouts(vec![
                     global_bindings.bind_group_layouts().clone(),
-                    transform_bind_group_layout.clone(),
-                    material_bind_group_layout.clone(),
-                    shadow_bind_group_layout.clone(), // Shadow map binding
+                    transform_bind_group_layout,
+                    material_bind_group_layout,
+                    shadow_final_layout,
                 ]),
-        );
-
-        // Register shadow pipeline (depth-only rendering)
-        pipeline_manager.register_pipeline(
-            "Shadow",
-            PipelineConfig::default()
-                .with_label("SHADOW")
-                .with_shader("shadow")
-                .with_depth_stencil(shadow_texture.texture.clone())
-                .with_bind_group_layouts(vec![
-                    global_bindings.bind_group_layouts().clone(), // For light matrix
-                    transform_bind_group_layout,                  // For model matrix
-                ])
-                .with_vertex_only(), // No fragment shader needed
         );
 
         let _ = pipeline_manager.create_all_pipelines();
@@ -254,22 +446,32 @@ impl RenderEngine {
             pipeline_manager,
             global_bindings,
             global_ubo,
-            shadow_texture,
+            shadow_depth_texture,
+            shadow_color_texture,
+            shadow_color_view,
+            blurred_shadow_texture,
+            blurred_shadow_view,
             shadow_bind_group,
-            shadow_bind_group_layout,
+            depth_to_color_bind_group,
+            blur_bind_group,
+            depth_sampler,
+            color_sampler,
             light_config,
         }
     }
 
-    /// Renders a frame with shadow mapping
+    /// Renders a frame with optional UI overlay
     ///
-    /// Performs two-pass rendering: first renders the scene from the light's
-    /// perspective to create a shadow map, then renders the scene normally
-    /// with shadows applied.
+    /// Performs multi-pass rendering: shadow mapping, depth-to-color conversion,
+    /// blur, main scene rendering, and optional UI overlay.
     ///
     /// # Arguments
     /// * `scene` - Scene containing objects to render
-    pub fn render_frame(&mut self, scene: &Scene) {
+    /// * `ui_callback` - Optional function that renders UI elements
+    pub fn render_frame<F>(&mut self, scene: &Scene, ui_callback: Option<F>)
+    where
+        F: FnOnce(&wgpu::Device, &wgpu::Queue, &mut wgpu::CommandEncoder, &wgpu::TextureView),
+    {
         let surface_texture = self
             .surface
             .get_current_texture()
@@ -285,19 +487,27 @@ impl RenderEngine {
                 label: Some("Render Encoder"),
             });
 
-        // PASS 1: Shadow mapping (render from light's perspective)
+        // PASS 1: Shadow mapping (render to depth AND color for depth extraction)
         {
             let mut shadow_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Shadow Pass"),
-                color_attachments: &[], // No color output
+                label: Some("Shadow Depth Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &self.shadow_color_view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::WHITE), // Clear to white (far depth)
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: &self.shadow_texture.view,
+                    view: &self.shadow_depth_texture.view,
                     depth_ops: Some(wgpu::Operations {
                         load: wgpu::LoadOp::Clear(1.0),
                         store: wgpu::StoreOp::Store,
                     }),
                     stencil_ops: None,
                 }),
+                // depth_stencil_attachment: None,
                 occlusion_query_set: None,
                 timestamp_writes: None,
             });
@@ -307,18 +517,57 @@ impl RenderEngine {
             if let Some(shadow_pipeline) = self.pipeline_manager.get_pipeline("Shadow") {
                 shadow_pass.set_pipeline(shadow_pipeline);
 
-                // Render all objects to shadow map
+                println!("🔍 Shadow pass pipeline found and set");
+
+                let mut object_count = 0;
+                let mut visible_count = 0;
+
                 for object in scene.objects.iter() {
+                    object_count += 1;
                     if object.visible {
+                        visible_count += 1;
                         shadow_pass.draw_object(object);
                     }
                 }
+
+                println!(
+                    "🔍 Shadow pass: {}/{} objects drawn",
+                    visible_count, object_count
+                );
             } else {
-                println!("-----------cry--------------")
+                println!("❌ Shadow pipeline not found!");
             }
         }
 
-        // PASS 2: Main rendering (with shadows)
+        // PASS 2: Convert depth to color (SKIP - we're already rendering depth as color)
+        // The shadow pass now outputs depth directly to the shadow_color_texture
+
+        // PASS 3: Blur the shadow map
+        // {
+        //     let mut blur_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+        //         label: Some("Shadow Blur Pass"),
+        //         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+        //             view: &self.blurred_shadow_view,
+        //             resolve_target: None,
+        //             ops: wgpu::Operations {
+        //                 load: wgpu::LoadOp::Clear(wgpu::Color::WHITE),
+        //                 store: wgpu::StoreOp::Store,
+        //             },
+        //         })],
+        //         depth_stencil_attachment: None,
+        //         occlusion_query_set: None,
+        //         timestamp_writes: None,
+        //     });
+
+        //     blur_pass.set_bind_group(0, &self.blur_bind_group, &[]);
+
+        //     if let Some(blur_pipeline) = self.pipeline_manager.get_pipeline("Blur") {
+        //         blur_pass.set_pipeline(blur_pipeline);
+        //         blur_pass.draw(0..3, 0..1);
+        //     }
+        // }
+
+        // PASS 4: Main rendering with shadows
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Main Render Pass"),
@@ -348,131 +597,7 @@ impl RenderEngine {
             });
 
             render_pass.set_bind_group(0, self.global_bindings.bind_groups(), &[]);
-            render_pass.set_bind_group(3, &self.shadow_bind_group, &[]); // Bind shadow map
-
-            if let Some(pipeline) = self.pipeline_manager.get_pipeline("PBR") {
-                render_pass.set_pipeline(pipeline);
-
-                let default_material = scene.material_manager.get_default_material();
-
-                match default_material.get_bind_group() {
-                    Some(bind_group) => {
-                        render_pass.set_bind_group(2, bind_group, &[]);
-
-                        for object in scene.objects.iter() {
-                            if object.visible {
-                                render_pass.draw_object(object);
-                            }
-                        }
-                    }
-                    None => {
-                        for material_name in scene.material_manager.list_materials() {
-                            let material =
-                                scene.material_manager.get_material(material_name).unwrap();
-                            if !material.get_bind_group().is_some() {
-                                println!(
-                                    "  ❌ Material '{}' missing bind group during render",
-                                    material.name
-                                );
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        self.queue.submit(iter::once(encoder.finish()));
-        surface_texture.present();
-    }
-
-    /// Renders a frame with 3D scene, shadows, and UI overlay
-    ///
-    /// Performs shadow mapping, then renders the 3D scene with shadows,
-    /// and finally calls the UI callback to render interface elements on top.
-    ///
-    /// # Arguments
-    /// * `scene` - Scene containing 3D objects to render
-    /// * `ui_callback` - Function that renders UI elements using the command encoder
-    pub fn render_frame_with_ui<F>(&mut self, scene: &Scene, ui_callback: F)
-    where
-        F: FnOnce(&wgpu::Device, &wgpu::Queue, &mut wgpu::CommandEncoder, &wgpu::TextureView),
-    {
-        let surface_texture = self
-            .surface
-            .get_current_texture()
-            .expect("Failed to get surface texture!");
-
-        let surface_texture_view = surface_texture
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
-
-        let mut encoder = self
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("Render Encoder"),
-            });
-
-        // PASS 1: Shadow mapping
-        {
-            let mut shadow_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Shadow Pass"),
-                color_attachments: &[],
-                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: &self.shadow_texture.view,
-                    depth_ops: Some(wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(1.0),
-                        store: wgpu::StoreOp::Store,
-                    }),
-                    stencil_ops: None,
-                }),
-                occlusion_query_set: None,
-                timestamp_writes: None,
-            });
-
-            shadow_pass.set_bind_group(0, self.global_bindings.bind_groups(), &[]);
-
-            if let Some(shadow_pipeline) = self.pipeline_manager.get_pipeline("Shadow") {
-                shadow_pass.set_pipeline(shadow_pipeline);
-
-                for object in scene.objects.iter() {
-                    if object.visible {
-                        shadow_pass.draw_object(object);
-                    }
-                }
-            }
-        }
-
-        // PASS 2: Main 3D rendering with shadows
-        {
-            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("3D Render Pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &surface_texture_view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.1,
-                            g: 0.2,
-                            b: 0.3,
-                            a: 1.0,
-                        }),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: &self.depth_texture.view,
-                    depth_ops: Some(wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(1.0),
-                        store: wgpu::StoreOp::Store,
-                    }),
-                    stencil_ops: None,
-                }),
-                occlusion_query_set: None,
-                timestamp_writes: None,
-            });
-
-            render_pass.set_bind_group(0, self.global_bindings.bind_groups(), &[]);
-            render_pass.set_bind_group(3, &self.shadow_bind_group, &[]); // Bind shadow map
+            render_pass.set_bind_group(3, &self.shadow_bind_group, &[]);
 
             if let Some(pipeline) = self.pipeline_manager.get_pipeline("PBR") {
                 render_pass.set_pipeline(pipeline);
@@ -495,16 +620,34 @@ impl RenderEngine {
             }
         }
 
-        // PASS 3: UI overlay
-        ui_callback(
-            &self.device,
-            &self.queue,
-            &mut encoder,
-            &surface_texture_view,
-        );
+        // PASS 5: UI overlay (if provided)
+        if let Some(ui_callback) = ui_callback {
+            ui_callback(
+                &self.device,
+                &self.queue,
+                &mut encoder,
+                &surface_texture_view,
+            );
+        }
 
         self.queue.submit(std::iter::once(encoder.finish()));
         surface_texture.present();
+    }
+
+    /// Convenience method for rendering without UI
+    pub fn render_frame_simple(&mut self, scene: &Scene) {
+        self.render_frame(
+            scene,
+            None::<fn(&wgpu::Device, &wgpu::Queue, &mut wgpu::CommandEncoder, &wgpu::TextureView)>,
+        );
+    }
+
+    /// Convenience method for rendering with UI
+    pub fn render_frame_with_ui<F>(&mut self, scene: &Scene, ui_callback: F)
+    where
+        F: FnOnce(&wgpu::Device, &wgpu::Queue, &mut wgpu::CommandEncoder, &wgpu::TextureView),
+    {
+        self.render_frame(scene, Some(ui_callback));
     }
 
     /// Updates camera and light uniform buffers
@@ -514,7 +657,6 @@ impl RenderEngine {
     ///
     /// # Arguments
     /// * `camera_uniform` - Updated camera uniform data
-    /// * `light_config` - Optional new light configuration
     pub fn update(&mut self, camera_uniform: CameraUniform) {
         update_global_ubo_with_light(
             &mut self.global_ubo,
