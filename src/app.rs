@@ -1,7 +1,48 @@
-//! Haggis Engine - Main Application Module
+//! # Application Module
 //!
 //! This module contains the core application structure and event handling for the Haggis 3D engine.
-//! Built on top of winit for windowing, wgpu for graphics, and imgui for UI.
+//! It manages the application lifecycle, window creation, and the main event loop.
+//!
+//! ## Overview
+//!
+//! The [`HaggisApp`] is the main entry point for creating and running Haggis applications.
+//! It provides a simple, builder-pattern API for configuring 3D scenes, simulations, and UI.
+//!
+//! ## Key Components
+//!
+//! - [`HaggisApp`] - Main application struct with builder pattern configuration
+//! - [`AppState`] - Internal state management for graphics, UI, and simulation
+//! - [`UiCallback`] - Type alias for user-defined UI callback functions
+//!
+//! ## Event Handling
+//!
+//! The application implements winit's [`ApplicationHandler`] trait to process:
+//! - Window events (resize, close, keyboard input)
+//! - Device events (mouse movement for camera controls)
+//! - UI events (ImGui interaction)
+//! - Simulation updates and rendering
+//!
+//! ## Usage
+//!
+//! ```no_run
+//! use haggis::HaggisApp;
+//!
+//! let mut app = HaggisApp::new().await;
+//!
+//! // Configure scene
+//! app.add_object("model.obj")
+//!     .with_transform([0.0, 0.0, 0.0], 1.0, 0.0);
+//!
+//! // Set up UI
+//! app.set_ui(|ui, scene, selected| {
+//!     ui.window("Debug").build(|| {
+//!         ui.text(format!("Objects: {}", scene.objects.len()));
+//!     });
+//! });
+//!
+//! // Run the application
+//! app.run();
+//! ```
 
 use cgmath::Vector3;
 use std::sync::Arc;
@@ -26,58 +67,129 @@ use crate::{
     ui::manager::UiManager,
 };
 
-/// UI callback function signature
+/// UI callback function signature for custom user interface rendering.
 ///
-/// Provides access to:
+/// This type defines the signature for user-provided UI callback functions that are called
+/// every frame during the UI update phase. The callback receives:
+///
 /// - `ui`: ImGui UI context for drawing interface elements
 /// - `scene`: Mutable reference to the 3D scene for object manipulation
 /// - `selected_index`: Currently selected object index for UI focus
+///
+/// # Examples
+///
+/// ```no_run
+/// use haggis::HaggisApp;
+///
+/// let mut app = HaggisApp::new().await;
+/// app.set_ui(|ui, scene, selected_index| {
+///     ui.window("Scene Inspector").build(|| {
+///         ui.text(format!("Objects: {}", scene.objects.len()));
+///         if let Some(index) = selected_index {
+///             ui.text(format!("Selected: {}", index));
+///         }
+///     });
+/// });
+/// ```
 pub type UiCallback = Box<dyn Fn(&imgui::Ui, &mut Scene, &mut Option<usize>) + Send + Sync>;
 
-/// Main Haggis application struct
+/// Main Haggis application struct that manages the application lifecycle.
 ///
-/// Manages the application lifecycle, window creation, and rendering loop.
-/// Uses the builder pattern for configuration before running.
+/// This is the primary interface for creating and configuring Haggis applications.
+/// It provides a builder-pattern API for setting up 3D scenes, simulations, and UI
+/// before running the main event loop.
 ///
-/// # Example
-/// ```rust
+/// The application manages:
+/// - Window creation and event handling
+/// - Graphics rendering pipeline
+/// - Simulation execution
+/// - User interface rendering
+/// - Resource management
+///
+/// # Examples
+///
+/// ## Basic Usage
+/// ```no_run
+/// use haggis;
+///
 /// let mut app = haggis::default();
-/// app.add_object("model.obj").with_transform([0.0, 0.0, 0.0], 1.0, 0.0);
-/// app.attach_simulation(MySimulation::new());
-/// app.set_ui(|ui, scene, selected| {
-///     ui.text("Hello, Haggis!");
-/// });
+/// app.add_object("model.obj")
+///     .with_transform([0.0, 0.0, 0.0], 1.0, 0.0);
+/// app.run();
+/// ```
+///
+/// ## With Simulation
+/// ```no_run
+/// use haggis::HaggisApp;
+/// use haggis::simulation::traits::Simulation;
+///
+/// struct MySimulation;
+/// impl Simulation for MySimulation {
+///     fn update(&mut self, _dt: f32, _scene: &mut haggis::gfx::scene::Scene, _device: Option<&wgpu::Device>, _queue: Option<&wgpu::Queue>) {}
+///     fn name(&self) -> &str { "MySimulation" }
+///     fn render_ui(&mut self, _ui: &imgui::Ui, _scene: &mut haggis::gfx::scene::Scene) {}
+/// }
+///
+/// let mut app = haggis::default();
+/// app.attach_simulation(MySimulation);
 /// app.run();
 /// ```
 pub struct HaggisApp {
     event_loop: Option<EventLoop<()>>,
+    /// Application state containing graphics, UI, and simulation components
     pub app_state: AppState,
 }
 
-/// Internal application state
+/// Internal application state containing all runtime components.
 ///
-/// Contains all runtime state including graphics resources, scene data,
-/// UI management, and simulation management. Separated from HaggisApp to implement ApplicationHandler.
+/// This struct holds all the runtime state for the Haggis application, including
+/// graphics resources, scene data, UI management, and simulation state.
+/// It's separated from [`HaggisApp`] to implement winit's [`ApplicationHandler`] trait.
+///
+/// # Fields
+///
+/// - `window`: The application window handle
+/// - `render_engine`: Graphics rendering engine with wgpu backend
+/// - `ui_manager`: ImGui UI system manager
+/// - `scene`: 3D scene containing objects, materials, and camera
+/// - `ui_callback`: User-defined UI rendering callback
+/// - `selected_object_index`: Currently selected object for UI interaction
+/// - `simulation_manager`: Manages CPU/GPU simulations
 pub struct AppState {
     window: Option<Arc<Window>>,
+    /// Graphics rendering engine
     pub render_engine: Option<RenderEngine>,
     ui_manager: Option<UiManager>,
+    /// 3D scene containing objects, materials, and camera
     pub scene: Scene,
+    /// User-defined UI callback function
     pub ui_callback: Option<UiCallback>,
     selected_object_index: Option<usize>,
-
-    // Simulation management
+    /// Simulation management system
     pub simulation_manager: SimulationManager,
 }
 
 impl HaggisApp {
-    /// Creates a new Haggis application with default settings
+    /// Creates a new Haggis application with default settings.
     ///
-    /// Sets up a default orbit camera positioned 5 units from origin,
-    /// with reasonable sensitivity and zoom limits.
+    /// Sets up a default orbit camera positioned 8 units from origin,
+    /// with reasonable sensitivity and zoom limits. The camera is configured
+    /// to orbit around the origin with smooth mouse controls.
     ///
     /// # Returns
-    /// A configured HaggisApp ready for object addition and UI setup
+    ///
+    /// A configured [`HaggisApp`] ready for object addition and UI setup.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use haggis::HaggisApp;
+    ///
+    /// # async fn example() {
+    /// let app = HaggisApp::new().await;
+    /// // Configure the app...
+    /// # }
+    /// ```
     pub async fn new() -> Self {
         let event_loop = EventLoop::new().expect("Failed to create event loop");
 
@@ -102,58 +214,104 @@ impl HaggisApp {
         }
     }
 
-    /// Attach a user-defined simulation to the engine
+    /// Attach a user-defined simulation to the engine.
+    ///
+    /// This method registers a simulation that will be updated every frame.
+    /// The simulation can be either CPU-based or GPU-based, depending on the
+    /// implementation of the [`Simulation`] trait.
     ///
     /// # Arguments
-    /// * `simulation` - User simulation implementing the Simulation trait
     ///
-    /// # Example
-    /// ```rust
-    /// app.attach_simulation(MyPhysicsSimulation::new());
+    /// * `simulation` - User simulation implementing the [`Simulation`] trait
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use haggis::HaggisApp;
+    /// use haggis::simulation::traits::Simulation;
+    ///
+    /// struct MyPhysicsSimulation;
+    /// impl Simulation for MyPhysicsSimulation {
+    ///     fn update(&mut self, _dt: f32, _scene: &mut haggis::gfx::scene::Scene, _device: Option<&wgpu::Device>, _queue: Option<&wgpu::Queue>) {}
+    ///     fn name(&self) -> &str { "Physics" }
+    ///     fn render_ui(&mut self, _ui: &imgui::Ui, _scene: &mut haggis::gfx::scene::Scene) {}
+    /// }
+    ///
+    /// let mut app = haggis::default();
+    /// app.attach_simulation(MyPhysicsSimulation);
     /// ```
     pub fn attach_simulation<T: Simulation + 'static>(&mut self, simulation: T) {
         self.app_state
             .simulation_manager
             .attach_simulation(Box::new(simulation), &mut self.app_state.scene);
-        println!("=== SIM ATTATCHED ===")
     }
 
-    /// Remove current simulation
+    /// Remove the current simulation from the engine.
+    ///
+    /// This method detaches any currently running simulation and cleans up
+    /// its resources. The scene will no longer be updated by simulation code.
     pub fn detach_simulation(&mut self) {
         self.app_state
             .simulation_manager
             .detach_simulation(&mut self.app_state.scene);
     }
 
-    /// Check if simulation is currently running
+    /// Check if a simulation is currently running.
     ///
     /// # Returns
-    /// `true` if simulation exists and is not paused
+    ///
+    /// `true` if a simulation is attached and not paused, `false` otherwise.
     pub fn is_simulation_running(&self) -> bool {
         self.app_state.simulation_manager.is_running()
     }
 
-    /// Get name of current simulation
+    /// Get the name of the current simulation.
     ///
     /// # Returns
-    /// Optional reference to the simulation name
+    ///
+    /// An optional reference to the simulation name, or `None` if no simulation is attached.
     pub fn current_simulation(&self) -> Option<&str> {
         self.app_state.simulation_manager.current_simulation_name()
     }
 
-    /// Sets the UI callback function
+    /// Sets the UI callback function for custom user interface rendering.
     ///
     /// The callback is called every frame during the UI update phase,
     /// allowing dynamic interface creation and scene manipulation.
+    /// This is where you can create custom ImGui windows, controls, and
+    /// interactive elements.
     ///
     /// # Arguments
+    ///
     /// * `ui_fn` - Function that receives UI context, scene, and selection state
     ///
-    /// # Example
-    /// ```rust
+    /// # Examples
+    ///
+    /// ## Simple UI
+    /// ```no_run
+    /// use haggis::HaggisApp;
+    ///
+    /// let mut app = haggis::default();
     /// app.set_ui(|ui, scene, selected| {
     ///     ui.window("Controls").build(|| {
-    ///         ui.text("Object count: {}", scene.objects.len());
+    ///         ui.text(format!("Objects: {}", scene.objects.len()));
+    ///     });
+    /// });
+    /// ```
+    ///
+    /// ## Interactive UI
+    /// ```no_run
+    /// use haggis::HaggisApp;
+    ///
+    /// let mut app = haggis::default();
+    /// app.set_ui(|ui, scene, selected| {
+    ///     ui.window("Scene Editor").build(|| {
+    ///         if ui.button("Add Object") {
+    ///             // Object manipulation logic
+    ///         }
+    ///         if let Some(index) = selected {
+    ///             ui.text(format!("Selected: {}", index));
+    ///         }
     ///     });
     /// });
     /// ```
@@ -164,13 +322,29 @@ impl HaggisApp {
         self.app_state.ui_callback = Some(Box::new(ui_fn));
     }
 
-    /// Runs the application
+    /// Runs the application.
     ///
-    /// Consumes the HaggisApp and starts the main event loop.
-    /// This function will block until the application is closed.
+    /// Consumes the [`HaggisApp`] and starts the main event loop.
+    /// This function will block until the application is closed by the user.
+    ///
+    /// The event loop handles:
+    /// - Window events (resize, close, input)
+    /// - Graphics rendering
+    /// - Simulation updates
+    /// - UI rendering
     ///
     /// # Panics
-    /// Panics if the event loop fails to start or if called multiple times
+    ///
+    /// Panics if the event loop fails to start or if called multiple times.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use haggis::HaggisApp;
+    ///
+    /// let app = haggis::default();
+    /// app.run(); // Blocks until application is closed
+    /// ```
     pub fn run(mut self) {
         let event_loop = self.event_loop.take().expect("Event loop already consumed");
         event_loop.set_control_flow(ControlFlow::Poll);
@@ -180,21 +354,39 @@ impl HaggisApp {
             .expect("Failed to run event loop");
     }
 
-    /// Adds a 3D object to the scene with builder pattern
+    /// Adds a 3D object to the scene with builder pattern support.
     ///
-    /// Returns an ObjectBuilder for method chaining to set transform,
-    /// materials, and other properties.
+    /// Loads a 3D model file and adds it to the scene. Returns an [`ObjectBuilder`]
+    /// for method chaining to set transform, materials, and other properties.
+    /// The object name is automatically extracted from the file path.
     ///
     /// # Arguments
+    ///
     /// * `object_path` - Path to the 3D model file (OBJ format supported)
     ///
     /// # Returns
-    /// ObjectBuilder for configuring the added object
     ///
-    /// # Example
-    /// ```rust
+    /// An [`ObjectBuilder`] for configuring the added object
+    ///
+    /// # Examples
+    ///
+    /// ## Basic Usage
+    /// ```no_run
+    /// use haggis::HaggisApp;
+    ///
+    /// let mut app = haggis::default();
     /// app.add_object("models/cube.obj")
     ///     .with_transform([2.0, 0.0, 0.0], 1.5, 45.0);
+    /// ```
+    ///
+    /// ## With Material
+    /// ```no_run
+    /// use haggis::HaggisApp;
+    ///
+    /// let mut app = haggis::default();
+    /// app.add_object("models/sphere.obj")
+    ///     .with_material("gold")
+    ///     .with_transform([0.0, 1.0, 0.0], 2.0, 0.0);
     /// ```
     pub fn add_object(&mut self, object_path: &str) -> ObjectBuilder {
         let object_index = self.app_state.scene.objects.len();
@@ -214,21 +406,31 @@ impl HaggisApp {
         ObjectBuilder::new(self, object_index)
     }
 
-    /// Adds a 3D object without builder pattern (legacy compatibility)
+    /// Adds a 3D object without builder pattern (legacy compatibility).
+    ///
+    /// This is a simple method for adding objects without the builder pattern.
+    /// Use [`add_object`] for more configuration options.
     ///
     /// # Arguments
+    ///
     /// * `object_path` - Path to the 3D model file
+    ///
+    /// [`add_object`]: Self::add_object
     pub fn add_object_simple(&mut self, object_path: &str) {
         self.app_state.scene.add_object(object_path);
     }
 }
 
 impl ApplicationHandler for AppState {
-    /// Called when the application is resumed or first started
+    /// Called when the application is resumed or first started.
     ///
-    /// Handles window creation and graphics initialization.
-    /// Sets up the wgpu render engine and ImGui UI system.
-
+    /// This method handles window creation and graphics initialization.
+    /// It sets up the wgpu render engine, ImGui UI system, and initializes
+    /// GPU resources for the scene and any attached simulations.
+    ///
+    /// # Arguments
+    ///
+    /// * `event_loop` - The active event loop for window creation
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.window.is_some() {
             return;
@@ -287,10 +489,19 @@ impl ApplicationHandler for AppState {
         }
     }
 
-    /// Handles window-specific events
+    /// Handles window-specific events including input, resizing, and rendering.
     ///
-    /// Processes input, window resizing, and triggers rendering.
-    /// UI input is handled first to prevent camera movement when interacting with interface.
+    /// This method processes all window-related events in the following order:
+    /// 1. UI input handling (takes precedence to prevent camera interference)
+    /// 2. Keyboard input for camera controls and shortcuts
+    /// 3. Window resizing and DPI changes
+    /// 4. Rendering updates and simulation
+    ///
+    /// # Arguments
+    ///
+    /// * `event_loop` - The active event loop
+    /// * `window_id` - ID of the window that generated the event
+    /// * `event` - The specific window event to handle
     fn window_event(
         &mut self,
         event_loop: &winit::event_loop::ActiveEventLoop,
@@ -444,9 +655,16 @@ impl ApplicationHandler for AppState {
             _ => (),
         }
     }
-    /// Handles device-level input events (mouse movement, etc.)
+    /// Handles device-level input events such as mouse movement and raw input.
     ///
-    /// Processes camera controls when UI is not capturing input.
+    /// This method processes camera controls when the UI is not capturing input,
+    /// ensuring that camera movement doesn't interfere with UI interactions.
+    ///
+    /// # Arguments
+    ///
+    /// * `_event_loop` - The active event loop (unused)
+    /// * `_device_id` - ID of the input device (unused)
+    /// * `event` - The device-specific event to handle
     fn device_event(
         &mut self,
         _event_loop: &ActiveEventLoop,
@@ -468,9 +686,14 @@ impl ApplicationHandler for AppState {
         self.scene.camera_manager.process_event(&event, window);
     }
 
-    /// Called when the event loop is about to wait for new events
+    /// Called when the event loop is about to wait for new events.
     ///
-    /// Requests a redraw to maintain smooth animation and responsive UI.
+    /// This method requests a redraw to maintain smooth animation and responsive UI.
+    /// It ensures continuous rendering for real-time simulations and interactions.
+    ///
+    /// # Arguments
+    ///
+    /// * `_event_loop` - The active event loop (unused)
     fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
         if let Some(ref window) = self.window {
             window.request_redraw();

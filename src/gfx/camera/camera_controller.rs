@@ -103,10 +103,6 @@ impl CameraController {
         }
     }
 
-    /// Updates the drag mode based on current shift and mouse state
-    fn update_drag_mode(&mut self) {
-        self.is_drag_rotate = self.is_mouse_pressed && !self.is_shift_held;
-    }
 
     /// Returns true if currently panning
     pub fn is_panning(&self) -> bool {

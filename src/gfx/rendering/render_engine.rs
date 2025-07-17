@@ -3,7 +3,7 @@
 //! Provides high-level rendering functionality built on top of wgpu, including
 //! pipeline management, depth testing, shadow mapping with blur, and UI overlay support.
 
-use std::{iter, sync::Arc};
+use std::sync::Arc;
 use wgpu::{Device, TextureFormat};
 
 use crate::gfx::{
@@ -39,19 +39,12 @@ pub struct RenderEngine {
 
     // Shadow mapping resources
     shadow_depth_texture: TextureResource, // Original depth shadow map
-    shadow_color_texture: wgpu::Texture,   // Depth converted to color
     shadow_color_view: wgpu::TextureView,
-    blurred_shadow_texture: wgpu::Texture, // Final blurred shadow
     blurred_shadow_view: wgpu::TextureView,
 
     // Bind groups and layouts
     shadow_bind_group: wgpu::BindGroup, // For final rendering
-    depth_to_color_bind_group: wgpu::BindGroup, // For depth conversion
     blur_bind_group: wgpu::BindGroup,   // For blur pass
-
-    // Samplers
-    depth_sampler: wgpu::Sampler,
-    color_sampler: wgpu::Sampler,
 
     light_config: LightConfig,
 }
@@ -176,18 +169,6 @@ impl RenderEngine {
             blurred_shadow_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
         // 4. Create samplers
-        let depth_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            address_mode_u: wgpu::AddressMode::ClampToEdge,
-            address_mode_v: wgpu::AddressMode::ClampToEdge,
-            address_mode_w: wgpu::AddressMode::ClampToEdge,
-            mag_filter: wgpu::FilterMode::Nearest,
-            min_filter: wgpu::FilterMode::Nearest,
-            mipmap_filter: wgpu::FilterMode::Nearest,
-            compare: None,
-            lod_min_clamp: 0.0,
-            lod_max_clamp: 32.0,
-            ..Default::default()
-        });
 
         let color_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             address_mode_u: wgpu::AddressMode::ClampToEdge,
@@ -203,28 +184,6 @@ impl RenderEngine {
         });
 
         // 5. Create bind group layouts
-        let depth_to_color_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("Depth to Color Layout"),
-                entries: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            multisampled: false,
-                            view_dimension: wgpu::TextureViewDimension::D2,
-                            sample_type: wgpu::TextureSampleType::Depth,
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::NonFiltering),
-                        count: None,
-                    },
-                ],
-            });
 
         let blur_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Blur Layout"),
@@ -272,20 +231,6 @@ impl RenderEngine {
             });
 
         // 6. Create bind groups
-        let depth_to_color_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Depth to Color Bind Group"),
-            layout: &depth_to_color_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&shadow_depth_texture.view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&depth_sampler),
-                },
-            ],
-        });
 
         let blur_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Blur Bind Group"),
@@ -366,7 +311,6 @@ impl RenderEngine {
         // Load shaders
         let _ = pipeline_manager.load_shader("default", include_str!("pbr.wgsl"));
         let _ = pipeline_manager.load_shader("shadow", include_str!("shadow_pass.wgsl"));
-        let _ = pipeline_manager.load_shader("depth_to_color", include_str!("depth_to_color.wgsl"));
         let _ = pipeline_manager.load_shader("blur", include_str!("shadow_blur.wgsl"));
 
         // Register shadow depth pass (NO DEPTH ATTACHMENT FOR DEBUGGING)
@@ -387,21 +331,6 @@ impl RenderEngine {
                 })]),
         );
 
-        // Register depth to color conversion pass
-        pipeline_manager.register_pipeline(
-            "DepthToColor",
-            PipelineConfig::default()
-                .with_label("DEPTH_TO_COLOR")
-                .with_shader("depth_to_color")
-                .with_bind_group_layouts(vec![depth_to_color_layout])
-                .with_color_targets(vec![Some(wgpu::ColorTargetState {
-                    format: wgpu::TextureFormat::Rgba8Unorm,
-                    blend: None,
-                    write_mask: wgpu::ColorWrites::ALL,
-                })])
-                .with_primitive_topology(wgpu::PrimitiveTopology::TriangleList)
-                .with_no_vertex_buffers(),
-        );
 
         // Register blur pass
         pipeline_manager.register_pipeline(
@@ -447,15 +376,10 @@ impl RenderEngine {
             global_bindings,
             global_ubo,
             shadow_depth_texture,
-            shadow_color_texture,
             shadow_color_view,
-            blurred_shadow_texture,
             blurred_shadow_view,
             shadow_bind_group,
-            depth_to_color_bind_group,
             blur_bind_group,
-            depth_sampler,
-            color_sampler,
             light_config,
         }
     }

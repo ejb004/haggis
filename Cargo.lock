@@ -646,7 +646,6 @@ dependencies = [
  "imgui",
  "imgui-wgpu",
  "imgui-winit-support",
- "iter",
  "log",
  "pollster",
  "rand",
@@ -757,12 +756,6 @@ name = "is_terminal_polyfill"
 version = "1.70.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7943c866cc5cd64cbc25b2e01621d07fa8eb2a1a23160ee81ce38704e97b8ecf"
-
-[[package]]
-name = "iter"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b3b2e3c8e73c68d760d0c421025a2b740727f1e807bd4a3d6de2ceb886c5dcb9"
 
 [[package]]
 name = "jiff"

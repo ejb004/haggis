@@ -118,21 +118,6 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
 "#
     }
 
-    /// Create compute pipeline using simplified builders
-    fn create_compute_pipeline(
-        device: &Device,
-    ) -> (
-        ComputePipeline,
-        BindGroup,
-        ArrayBuffer<ObjectTransform>,
-        UniformBuffer<SimulationUniforms>,
-        ArrayBuffer<f32>,
-        ArrayBuffer<ObjectTransform>,
-        u32,
-    ) {
-        // This would be called from initialize_gpu with proper parameters
-        todo!("This is just a skeleton - actual implementation in initialize_gpu")
-    }
 }
 
 impl Simulation for GpuSimplyMove {
@@ -246,7 +231,7 @@ impl Simulation for GpuSimplyMove {
     }
 
     // GPU-specific methods - now much cleaner!
-    fn initialize_gpu(&mut self, device: &Device, queue: &Queue) {
+    fn initialize_gpu(&mut self, device: &Device, _queue: &Queue) {
         if self.object_count == 0 {
             println!("No objects to simulate on GPU");
             return;

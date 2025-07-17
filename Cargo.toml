@@ -19,7 +19,6 @@ cgmath = "0.18.0"
 anyhow = "1.0.98"
 tobj = "4.0.3"
 thiserror = "2.0.12"
-iter = "0.1.0"
 
 
 imgui = "0.12.0"

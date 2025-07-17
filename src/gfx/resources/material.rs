@@ -337,12 +337,6 @@ pub struct MaterialBuilder<'a> {
 }
 
 impl<'a> MaterialBuilder<'a> {
-    pub(crate) fn new(manager: &'a mut MaterialManager, material_id: &str) -> Self {
-        Self {
-            manager,
-            material_id: material_id.to_string(),
-        }
-    }
 
     /// Sets the base color
     pub fn with_color(self, r: f32, g: f32, b: f32) -> Self {

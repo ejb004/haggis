@@ -81,7 +81,7 @@ impl Scene {
 
         let mut meshes = Vec::new();
 
-        for (i, m) in models.iter().enumerate() {
+        for m in models.iter() {
             let mesh = &m.mesh;
 
             // DEBUG: Print what we're getting from tobj

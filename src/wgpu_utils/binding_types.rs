@@ -29,7 +29,7 @@ pub fn sampler(filtering: wgpu::SamplerBindingType) -> wgpu::BindingType {
     wgpu::BindingType::Sampler(filtering)
 }
 
-pub fn texture2D() -> wgpu::BindingType {
+pub fn texture_2d() -> wgpu::BindingType {
     wgpu::BindingType::Texture {
         sample_type: wgpu::TextureSampleType::Float { filterable: true },
         view_dimension: wgpu::TextureViewDimension::D2,
@@ -37,7 +37,7 @@ pub fn texture2D() -> wgpu::BindingType {
     }
 }
 
-pub fn texture2DArray() -> wgpu::BindingType {
+pub fn texture_2d_array() -> wgpu::BindingType {
     wgpu::BindingType::Texture {
         sample_type: wgpu::TextureSampleType::Float { filterable: true },
         view_dimension: wgpu::TextureViewDimension::D2Array,
@@ -45,7 +45,7 @@ pub fn texture2DArray() -> wgpu::BindingType {
     }
 }
 
-pub fn itexture2D() -> wgpu::BindingType {
+pub fn itexture_2d() -> wgpu::BindingType {
     wgpu::BindingType::Texture {
         sample_type: wgpu::TextureSampleType::Sint,
         view_dimension: wgpu::TextureViewDimension::D2,
@@ -53,7 +53,7 @@ pub fn itexture2D() -> wgpu::BindingType {
     }
 }
 
-pub fn utexture2D() -> wgpu::BindingType {
+pub fn utexture_2d() -> wgpu::BindingType {
     wgpu::BindingType::Texture {
         sample_type: wgpu::TextureSampleType::Uint,
         view_dimension: wgpu::TextureViewDimension::D2,
@@ -61,7 +61,7 @@ pub fn utexture2D() -> wgpu::BindingType {
     }
 }
 
-pub fn texture3D() -> wgpu::BindingType {
+pub fn texture_3d() -> wgpu::BindingType {
     wgpu::BindingType::Texture {
         sample_type: wgpu::TextureSampleType::Float { filterable: true },
         view_dimension: wgpu::TextureViewDimension::D3,
@@ -69,7 +69,7 @@ pub fn texture3D() -> wgpu::BindingType {
     }
 }
 
-pub fn itexture3D() -> wgpu::BindingType {
+pub fn itexture_3d() -> wgpu::BindingType {
     wgpu::BindingType::Texture {
         sample_type: wgpu::TextureSampleType::Sint,
         view_dimension: wgpu::TextureViewDimension::D3,
@@ -77,7 +77,7 @@ pub fn itexture3D() -> wgpu::BindingType {
     }
 }
 
-pub fn utexture3D() -> wgpu::BindingType {
+pub fn utexture_3d() -> wgpu::BindingType {
     wgpu::BindingType::Texture {
         sample_type: wgpu::TextureSampleType::Uint,
         view_dimension: wgpu::TextureViewDimension::D3,
@@ -85,7 +85,7 @@ pub fn utexture3D() -> wgpu::BindingType {
     }
 }
 
-pub fn textureCube() -> wgpu::BindingType {
+pub fn texture_cube() -> wgpu::BindingType {
     wgpu::BindingType::Texture {
         sample_type: wgpu::TextureSampleType::Float { filterable: true },
         view_dimension: wgpu::TextureViewDimension::Cube,
@@ -93,7 +93,7 @@ pub fn textureCube() -> wgpu::BindingType {
     }
 }
 
-pub fn image2D(
+pub fn image_2d(
     format: wgpu::TextureFormat,
     access: wgpu::StorageTextureAccess,
 ) -> wgpu::BindingType {
@@ -104,7 +104,7 @@ pub fn image2D(
     }
 }
 
-pub fn image2DArray(
+pub fn image_2d_array(
     format: wgpu::TextureFormat,
     access: wgpu::StorageTextureAccess,
 ) -> wgpu::BindingType {
@@ -115,7 +115,7 @@ pub fn image2DArray(
     }
 }
 
-pub fn image3D(
+pub fn image_3d(
     format: wgpu::TextureFormat,
     access: wgpu::StorageTextureAccess,
 ) -> wgpu::BindingType {
