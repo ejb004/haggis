@@ -266,7 +266,7 @@ impl RenderEngine {
         let light_config = LightConfig {
             position: [20.0, 20.0, 20.0],
             color: [1.0, 1.0, 1.0],
-            intensity: 100.0,
+            intensity: 10000.0,
         };
         let global_ubo = GlobalUBO::new(&device);
         let mut global_bindings = GlobalBindings::new(&device);
@@ -330,7 +330,6 @@ impl RenderEngine {
                     write_mask: wgpu::ColorWrites::ALL,
                 })]),
         );
-
 
         // Register blur pass
         pipeline_manager.register_pipeline(

@@ -29,6 +29,14 @@ imgui-winit-support = "0.13.0"
 [dev-dependencies]
 rand = "0.9.1"
 
+[dependencies.rand]
+version = "0.9.1"
+optional = false
+
+[dependencies.futures]
+version = "0.3"
+optional = false
+
 [[example]]
 name = "lbm_simulation"
 path = "examples/lbm_simulation/main.rs"
@@ -36,3 +44,42 @@ path = "examples/lbm_simulation/main.rs"
 [[example]]
 name = "simple_render"
 path = "examples/simple_render/main.rs"
+
+# High-level API examples
+[[example]]
+name = "simple_particles"
+path = "examples/simulation_usage/high_level/simple_particles.rs"
+
+[[example]]
+name = "physics_demo"
+path = "examples/simulation_usage/high_level/physics_demo.rs"
+
+[[example]]
+name = "flocking_simulation"
+path = "examples/simulation_usage/high_level/flocking_simulation.rs"
+
+# Mid-level API examples
+[[example]]
+name = "custom_forces"
+path = "examples/simulation_usage/mid_level/custom_forces.rs"
+
+[[example]]
+name = "hybrid_cpu_gpu"
+path = "examples/simulation_usage/mid_level/hybrid_cpu_gpu.rs"
+
+[[example]]
+name = "performance_comparison"
+path = "examples/simulation_usage/mid_level/performance_comparison.rs"
+
+# Low-level API examples
+[[example]]
+name = "custom_compute_shader"
+path = "examples/simulation_usage/low_level/custom_compute_shader.rs"
+
+[[example]]
+name = "manual_buffer_management"
+path = "examples/simulation_usage/low_level/manual_buffer_management.rs"
+
+[[example]]
+name = "advanced_rendering"
+path = "examples/simulation_usage/low_level/advanced_rendering.rs"

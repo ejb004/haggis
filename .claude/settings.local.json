@@ -2,7 +2,17 @@
   "permissions": {
     "allow": [
       "Bash(cargo build:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "mcp__ide__getDiagnostics",
+      "Bash(cargo check:*)",
+      "Bash(cargo test)",
+      "Bash(cargo test:*)",
+      "Bash(mkdir:*)",
+      "Bash(grep:*)",
+      "Bash(for example in simple_particles physics_demo flocking_simulation custom_forces hybrid_cpu_gpu performance_comparison custom_compute_shader manual_buffer_management advanced_rendering)",
+      "Bash(do echo \"Checking $example...\")",
+      "Bash(echo:*)",
+      "Bash(done)"
     ],
     "deny": []
   }

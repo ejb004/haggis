@@ -376,7 +376,7 @@ impl Simulation for GpuSimplyMove {
             sender.send(result).unwrap();
         });
 
-        device.poll(wgpu::MaintainBase::Wait);
+        let _ = device.poll(wgpu::MaintainBase::Wait);
 
         if let Ok(Ok(())) = receiver.recv() {
             let data = buffer_slice.get_mapped_range();
