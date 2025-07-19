@@ -1,18 +1,19 @@
-//! # Simple Particles Example
+//! # Simple Particles Example - CPU Implementation
 //!
-//! This example demonstrates a simple particle system simulation using the haggis framework.
-//! Perfect for beginners who want to get started quickly with working particle physics.
+//! This example demonstrates a simple particle system simulation running on the CPU using the haggis framework.
+//! Perfect for beginners who want to understand CPU-based particle physics and compare performance with GPU implementation.
 //!
 //! ## Features Demonstrated
-//! - Simple particle physics with gravity and bouncing
+//! - CPU-based particle physics with gravity and bouncing
 //! - Visual particles represented by cubes
 //! - Basic collision detection with ground and walls
 //! - Real-time parameter adjustment
-//! - Simple UI integration
+//! - Performance metrics and FPS monitoring
+//! - Educational CPU vs GPU comparison framework
 //!
 //! ## Usage
 //! ```bash
-//! cargo run --example simple_particles
+//! cargo run --example simple_particles_cpu
 //! ```
 
 use cgmath::Vector3;
@@ -20,6 +21,8 @@ use haggis::gfx::scene::Scene;
 use haggis::simulation::traits::Simulation;
 use haggis::ui::default_transform_panel;
 use imgui::Ui;
+use std::time::Instant;
+use std::collections::VecDeque;
 
 /// Simple particle representation
 #[derive(Clone)]
@@ -30,8 +33,65 @@ struct Particle {
     active: bool,
 }
 
-/// High-level particle simulation
-struct SimpleParticleSystem {
+/// Performance metrics for CPU implementation
+#[derive(Debug, Clone)]
+struct PerformanceMetrics {
+    frame_times: VecDeque<f32>,
+    update_times: VecDeque<f32>,
+    particles_per_second: f32,
+    last_update_time: f32,
+}
+
+impl PerformanceMetrics {
+    fn new() -> Self {
+        Self {
+            frame_times: VecDeque::new(),
+            update_times: VecDeque::new(),
+            particles_per_second: 0.0,
+            last_update_time: 0.0,
+        }
+    }
+
+    fn record_frame(&mut self, frame_time: f32, update_time: f32, particle_count: usize) {
+        const MAX_SAMPLES: usize = 120; // 2 seconds at 60 FPS
+        
+        self.frame_times.push_back(frame_time);
+        self.update_times.push_back(update_time);
+        self.last_update_time = update_time;
+        
+        if self.frame_times.len() > MAX_SAMPLES {
+            self.frame_times.pop_front();
+            self.update_times.pop_front();
+        }
+        
+        // Calculate particles per second
+        self.particles_per_second = if frame_time > 0.0 {
+            (particle_count as f32) / frame_time
+        } else {
+            0.0
+        };
+    }
+
+    fn get_avg_fps(&self) -> f32 {
+        if self.frame_times.is_empty() {
+            0.0
+        } else {
+            let avg_frame_time = self.frame_times.iter().sum::<f32>() / self.frame_times.len() as f32;
+            if avg_frame_time > 0.0 { 1.0 / avg_frame_time } else { 0.0 }
+        }
+    }
+
+    fn get_avg_update_time_ms(&self) -> f32 {
+        if self.update_times.is_empty() {
+            0.0
+        } else {
+            (self.update_times.iter().sum::<f32>() / self.update_times.len() as f32) * 1000.0
+        }
+    }
+}
+
+/// High-level CPU particle simulation
+struct SimpleParticleSystemCPU {
     particles: Vec<Particle>,
     gravity: Vector3<f32>,
     damping: f32,
@@ -41,9 +101,10 @@ struct SimpleParticleSystem {
     time: f32,
     spawn_rate: f32,
     last_spawn: f32,
+    metrics: PerformanceMetrics,
 }
 
-impl SimpleParticleSystem {
+impl SimpleParticleSystemCPU {
     fn new() -> Self {
         Self {
             particles: Vec::new(),
@@ -55,6 +116,7 @@ impl SimpleParticleSystem {
             time: 0.0,
             spawn_rate: 2.0,
             last_spawn: 0.0,
+            metrics: PerformanceMetrics::new(),
         }
     }
 
@@ -74,14 +136,23 @@ impl SimpleParticleSystem {
             (angle.sin() * 0.5) + (index as f32 * 0.13) % 2.0 - 1.0,
         );
 
-        if index < self.particles.len() {
-            self.particles[index] = Particle {
-                position,
-                velocity,
-                initial_position: position,
-                active: true,
-            };
+        // Ensure particles vector is large enough
+        while self.particles.len() <= index {
+            self.particles.push(Particle {
+                position: Vector3::new(0.0, 0.0, 0.0),
+                velocity: Vector3::new(0.0, 0.0, 0.0),
+                initial_position: Vector3::new(0.0, 0.0, 0.0),
+                active: false,
+            });
         }
+        
+        // Set the particle data
+        self.particles[index] = Particle {
+            position,
+            velocity,
+            initial_position: position,
+            active: true,
+        };
     }
 
     fn update_particles(&mut self, delta_time: f32) {
@@ -155,19 +226,19 @@ impl SimpleParticleSystem {
     }
 }
 
-impl Simulation for SimpleParticleSystem {
-    fn initialize(&mut self, scene: &mut Scene) {
-        println!("Initializing Simple Particle System...");
+impl Simulation for SimpleParticleSystemCPU {
+    fn initialize(&mut self, _scene: &mut Scene) {
+        println!("Initializing CPU-based Simple Particle System...");
 
-        // Initialize particles based on the number of objects in the scene
-        let particle_count = scene.objects.len().min(50); // Limit to prevent performance issues
-        self.particles.clear();
+        // Initialize a fixed number of particles regardless of scene objects
+        let particle_count = 25; // Fixed count for consistent behavior
+        self.particles = Vec::with_capacity(particle_count);
 
         for i in 0..particle_count {
             self.spawn_particle(i);
         }
 
-        println!("Initialized {} particles", particle_count);
+        println!("Initialized {} particles on CPU", particle_count);
     }
 
     fn update(&mut self, delta_time: f32, scene: &mut Scene) {
@@ -175,10 +246,12 @@ impl Simulation for SimpleParticleSystem {
             return;
         }
 
+        let update_start = Instant::now();
+
         self.time += delta_time;
         self.last_spawn += delta_time;
 
-        // Update particle physics
+        // Update particle physics on CPU
         self.update_particles(delta_time);
 
         // Respawn particles periodically
@@ -189,6 +262,11 @@ impl Simulation for SimpleParticleSystem {
 
         // Sync particle positions to scene objects
         self.sync_to_scene(scene);
+
+        // Record performance metrics
+        let update_time = update_start.elapsed().as_secs_f32();
+        let active_count = self.particles.iter().filter(|p| p.active).count();
+        self.metrics.record_frame(delta_time, update_time, active_count);
     }
 
     fn render_ui(&mut self, ui: &Ui) {
@@ -197,14 +275,14 @@ impl Simulation for SimpleParticleSystem {
         let panel_height = 200.0;
         let bottom_margin = 10.0;
 
-        ui.window("Simple Particles")
+        ui.window("Simple Particles (CPU)")
             .size([panel_width, panel_height], imgui::Condition::FirstUseEver)
             .position(
                 [10.0, display_size[1] - panel_height - bottom_margin],
                 imgui::Condition::FirstUseEver,
             )
             .build(|| {
-                ui.text("High-Level Particle System");
+                ui.text("High-Level Particle System - CPU Implementation");
                 ui.separator();
 
                 ui.text(&format!(
@@ -212,6 +290,13 @@ impl Simulation for SimpleParticleSystem {
                     self.particles.iter().filter(|p| p.active).count()
                 ));
                 ui.text(&format!("Time: {:.2}s", self.time));
+                
+                // Performance metrics
+                ui.spacing();
+                ui.text("CPU Performance:");
+                ui.text(&format!("  FPS: {:.1}", self.metrics.get_avg_fps()));
+                ui.text(&format!("  Update Time: {:.2}ms", self.metrics.get_avg_update_time_ms()));
+                ui.text(&format!("  Particles/sec: {:.0}", self.metrics.particles_per_second));
                 ui.spacing();
 
                 // Physics controls
@@ -240,17 +325,17 @@ impl Simulation for SimpleParticleSystem {
                 }
 
                 ui.separator();
-                ui.text("Features:");
+                ui.text("CPU Features:");
+                ui.text("✓ Single-threaded CPU physics");
                 ui.text("✓ Gravity simulation");
                 ui.text("✓ Ground collision");
                 ui.text("✓ Boundary constraints");
-                ui.text("✓ Automatic respawning");
-                ui.text("✓ Real-time parameters");
+                ui.text("✓ Performance monitoring");
             });
     }
 
     fn name(&self) -> &str {
-        "Simple Particles"
+        "Simple Particles (CPU)"
     }
 
     fn is_running(&self) -> bool {
@@ -290,8 +375,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .with_transform([0.0, 0.0, 5.0], 0.1, 0.0);
     }
 
-    // Create and attach the particle simulation
-    let particle_sim = SimpleParticleSystem::new();
+    // Create and attach the CPU particle simulation
+    let particle_sim = SimpleParticleSystemCPU::new();
     haggis.attach_simulation(particle_sim);
 
     // Set up UI
@@ -299,26 +384,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         default_transform_panel(ui, scene, selected_index);
 
         // Add a guide panel
-        ui.window("Simple Particles Guide")
-            .size([350.0, 200.0], imgui::Condition::FirstUseEver)
-            // .position(
-            //     [
-            //         panel_width + 20.0,
-            //         display_size[1] - panel_height - bottom_margin,
-            //     ],
-            //     imgui::Condition::FirstUseEver,
-            // )
+        ui.window("CPU Implementation Guide")
+            .size([350.0, 250.0], imgui::Condition::FirstUseEver)
             .build(|| {
-                ui.text("High-Level Particle System");
+                ui.text("High-Level CPU Particle System");
                 ui.separator();
                 ui.text("This example demonstrates:");
-                ui.text("• Simple particle physics");
-                ui.text("• Gravity and collisions");
-                ui.text("• Automatic respawning");
+                ui.text("• CPU-based particle physics");
+                ui.text("• Single-threaded computation");
+                ui.text("• Performance monitoring");
                 ui.text("• Real-time parameter tuning");
                 ui.spacing();
+                ui.text("Educational Framework:");
+                ui.text("• Compare with GPU implementation");
+                ui.text("• Observe CPU performance characteristics");
+                ui.text("• Understand sequential processing");
+                ui.spacing();
                 ui.text("Watch the blue cubes fall and bounce!");
-                ui.text("Adjust parameters in the Particles panel.");
+                ui.text("Monitor CPU performance metrics.");
             });
     });
 

@@ -28,6 +28,7 @@ imgui-winit-support = "0.13.0"
 
 [dev-dependencies]
 rand = "0.9.1"
+num_cpus = "1.16.0"
 
 [dependencies.rand]
 version = "0.9.1"
@@ -37,49 +38,33 @@ optional = false
 version = "0.3"
 optional = false
 
+# High-level API examples - CPU vs GPU comparison
 [[example]]
-name = "lbm_simulation"
-path = "examples/lbm_simulation/main.rs"
+name = "simple_particles_cpu"
+path = "examples/simulation_usage/high_level/cpu/simple_particles.rs"
 
 [[example]]
-name = "simple_render"
-path = "examples/simple_render/main.rs"
+name = "simple_particles_gpu"
+path = "examples/simulation_usage/high_level/gpu/simple_particles.rs"
 
-# High-level API examples
+# Low-level API examples - Advanced CPU vs GPU optimization
 [[example]]
-name = "simple_particles"
-path = "examples/simulation_usage/high_level/simple_particles.rs"
-
-[[example]]
-name = "physics_demo"
-path = "examples/simulation_usage/high_level/physics_demo.rs"
+name = "performance_comparison_cpu"
+path = "examples/simulation_usage/low_level/cpu/performance_comparison.rs"
 
 [[example]]
-name = "flocking_simulation"
-path = "examples/simulation_usage/high_level/flocking_simulation.rs"
+name = "performance_comparison_gpu"
+path = "examples/simulation_usage/low_level/gpu/performance_comparison.rs"
 
-# Mid-level API examples
-[[example]]
-name = "custom_forces"
-path = "examples/simulation_usage/mid_level/custom_forces.rs"
-
-[[example]]
-name = "hybrid_cpu_gpu"
-path = "examples/simulation_usage/mid_level/hybrid_cpu_gpu.rs"
-
-[[example]]
-name = "performance_comparison"
-path = "examples/simulation_usage/mid_level/performance_comparison.rs"
-
-# Low-level API examples
+# Additional low-level GPU examples
 [[example]]
 name = "custom_compute_shader"
-path = "examples/simulation_usage/low_level/custom_compute_shader.rs"
+path = "examples/simulation_usage/low_level/gpu/custom_compute_shader.rs"
 
 [[example]]
 name = "manual_buffer_management"
-path = "examples/simulation_usage/low_level/manual_buffer_management.rs"
+path = "examples/simulation_usage/low_level/gpu/manual_buffer_management.rs"
 
 [[example]]
 name = "advanced_rendering"
-path = "examples/simulation_usage/low_level/advanced_rendering.rs"
+path = "examples/simulation_usage/low_level/gpu/advanced_rendering.rs"
