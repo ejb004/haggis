@@ -38,6 +38,16 @@ optional = false
 version = "0.3"
 optional = false
 
+# Quickstart example - Perfect first example for beginners
+[[example]]
+name = "quickstart"
+path = "examples/quickstart/main.rs"
+
+# Three-body problem - Advanced celestial mechanics simulation
+[[example]]
+name = "three_body"
+path = "examples/three_body/main.rs"
+
 # High-level API examples - CPU vs GPU comparison
 [[example]]
 name = "simple_particles_cpu"

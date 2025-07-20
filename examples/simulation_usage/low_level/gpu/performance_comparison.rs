@@ -713,6 +713,11 @@ impl LowLevelGPUSimulation {
     fn sync_to_scene(&self, scene: &mut Scene) {
         for (i, particle) in self.particles.iter().enumerate() {
             if let Some(object) = scene.objects.get_mut(i) {
+                // Don't update the ground plane
+                if object.name == "ground_plane" {
+                    continue;
+                }
+                
                 if particle.active {
                     object.ui_transform.position = [
                         particle.position.x,
@@ -726,6 +731,13 @@ impl LowLevelGPUSimulation {
                     object.visible = false;
                 }
             }
+        }
+        
+        // Ensure ground plane stays in place and visible
+        if let Some(ground) = scene.objects.iter_mut().find(|obj| obj.name == "ground_plane") {
+            ground.ui_transform.position = [0.0, 0.0, 0.0];
+            ground.apply_ui_transform();
+            ground.visible = true;
         }
     }
 }
@@ -929,11 +941,16 @@ impl Simulation for LowLevelGPUSimulation {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut haggis = haggis::default();
 
-    // Create materials for GPU particles (different color from CPU)
+    // Create materials for GPU particles and ground
     haggis
         .app_state
         .scene
         .add_material_rgb("gpu_particle_advanced", 0.2, 1.0, 0.6, 0.7, 0.4);
+    
+    haggis
+        .app_state
+        .scene
+        .add_material_rgb("ground", 0.7, 0.7, 0.7, 0.1, 0.8);
 
     // Add visual objects
     for i in 0..50 {
@@ -943,6 +960,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .with_name(&format!("gpu_advanced_particle_{}", i))
             .with_transform([0.0, 0.0, 0.0], 0.05, 0.0);
     }
+
+    // Add ground plane (static, not affected by physics)
+    haggis
+        .add_object("examples/test/ground.obj")
+        .with_material("ground")
+        .with_name("ground_plane")
+        .with_transform([0.0, 0.0, 0.0], 10.0, 0.0);
 
     // Create low-level GPU simulation
     let gpu_sim = LowLevelGPUSimulation::new();

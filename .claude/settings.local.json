@@ -15,7 +15,10 @@
       "Bash(done)",
       "Bash(mv:*)",
       "Bash(rm:*)",
-      "Bash(cargo run:*)"
+      "Bash(cargo run:*)",
+      "Bash(timeout 5 cargo run --example quickstart --quiet)",
+      "Bash(gtimeout 3 cargo run --example quickstart --quiet)",
+      "Bash(find:*)"
     ],
     "deny": []
   }

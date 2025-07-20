@@ -440,23 +440,11 @@ impl RenderEngine {
             if let Some(shadow_pipeline) = self.pipeline_manager.get_pipeline("Shadow") {
                 shadow_pass.set_pipeline(shadow_pipeline);
 
-                println!("🔍 Shadow pass pipeline found and set");
-
-                let mut object_count = 0;
-                let mut visible_count = 0;
-
                 for object in scene.objects.iter() {
-                    object_count += 1;
                     if object.visible {
-                        visible_count += 1;
                         shadow_pass.draw_object(object);
                     }
                 }
-
-                println!(
-                    "🔍 Shadow pass: {}/{} objects drawn",
-                    visible_count, object_count
-                );
             } else {
                 println!("❌ Shadow pipeline not found!");
             }
@@ -486,10 +474,7 @@ impl RenderEngine {
 
             if let Some(blur_pipeline) = self.pipeline_manager.get_pipeline("Blur") {
                 blur_pass.set_pipeline(blur_pipeline);
-                println!("🔍 Blur pass: Pipeline set");
-                println!("🔍 Blur pass: About to draw fullscreen triangle");
                 blur_pass.draw(0..3, 0..1);
-                println!("🔍 Blur pass: Draw call completed");
             } else {
                 println!("❌ Blur pipeline not found!");
             }

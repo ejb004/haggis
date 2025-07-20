@@ -260,6 +260,11 @@ impl SimpleParticleSystemGPU {
     fn sync_to_scene(&self, scene: &mut Scene) {
         for (i, particle) in self.particles.iter().enumerate() {
             if let Some(object) = scene.objects.get_mut(i) {
+                // Don't update the ground plane
+                if object.name == "ground_plane" {
+                    continue;
+                }
+                
                 if particle.active {
                     object.ui_transform.position = [
                         particle.position.x,
@@ -273,6 +278,13 @@ impl SimpleParticleSystemGPU {
                     object.visible = false;
                 }
             }
+        }
+        
+        // Ensure ground plane stays in place and visible
+        if let Some(ground) = scene.objects.iter_mut().find(|obj| obj.name == "ground_plane") {
+            ground.ui_transform.position = [0.0, 0.0, 0.0];
+            ground.apply_ui_transform();
+            ground.visible = true;
         }
     }
 
@@ -454,11 +466,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize the haggis framework
     let mut haggis = haggis::default();
 
-    // Create a simple material for particles (different color for GPU)
+    // Create materials for particles and ground
     haggis
         .app_state
         .scene
         .add_material_rgb("particle_green", 0.2, 1.0, 0.4, 0.8, 0.3);
+    
+    haggis
+        .app_state
+        .scene
+        .add_material_rgb("ground", 0.7, 0.7, 0.7, 0.1, 0.8);
 
     // Add visual cubes to represent particles
     for i in 0..25 {
@@ -468,6 +485,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .with_name(&format!("particle_{}", i))
             .with_transform([0.0, 0.0, 5.0], 0.1, 0.0);
     }
+
+    // Add ground plane (static, not affected by physics)
+    haggis
+        .add_object("examples/test/ground.obj")
+        .with_material("ground")
+        .with_name("ground_plane")
+        .with_transform([0.0, 0.0, 0.0], 8.0, 0.0);
 
     // Create and attach the GPU particle simulation
     let particle_sim = SimpleParticleSystemGPU::new();
