@@ -6,6 +6,7 @@
 use crate::gfx::scene::Scene;
 use imgui::Ui;
 use wgpu::{Device, Queue};
+use std::any::Any;
 
 /// Core trait for user-defined simulations in the Haggis engine.
 ///
@@ -250,4 +251,7 @@ pub trait Simulation {
     fn is_gpu_ready(&self) -> bool {
         false // Default: not GPU-ready
     }
+
+    /// Support for downcasting to concrete types
+    fn as_any(&self) -> &dyn Any;
 }

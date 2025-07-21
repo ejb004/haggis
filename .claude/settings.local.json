@@ -18,7 +18,13 @@
       "Bash(cargo run:*)",
       "Bash(timeout 5 cargo run --example quickstart --quiet)",
       "Bash(gtimeout 3 cargo run --example quickstart --quiet)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(timeout 8s cargo run --example test)",
+      "Bash(timeout 8 cargo run --example cut_plane_demo)",
+      "Bash(timeout:*)",
+      "Bash(true)",
+      "Bash(gtimeout 3 cargo run --example cut_plane_demo)",
+      "Bash(gtimeout 10 cargo run --example cut_plane_demo)"
     ],
     "deny": []
   }

@@ -95,7 +95,6 @@ impl CameraController {
             } => {
                 // Reset camera when Shift+C is pressed
                 if self.is_shift_held {
-                    println!("🔄 Resetting camera to default position");
                     camera.reset_to_default();
                 }
             }

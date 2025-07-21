@@ -545,6 +545,10 @@ impl Simulation for ParticleSimulation {
             );
         }
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 /// Convenience functions for common simulation patterns

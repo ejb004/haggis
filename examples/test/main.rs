@@ -1,5 +1,6 @@
 use haggis::simulation::examples::cpu::SimplyMove;
 use haggis::ui::default_transform_panel;
+use haggis::visualization::CutPlane2D;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut haggis = haggis::default();
@@ -34,6 +35,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_material("grey") // Assign steel material
         .with_name("_ground")
         .with_transform([0.0, 0.0, 0.0], 1.0, 0.0);
+
+    // Add cut plane visualization
+    let cut_plane = CutPlane2D::new();
+    haggis.add_visualization("cut_plane", cut_plane);
 
     haggis.set_ui(|ui, scene, selected_index| {
         default_transform_panel(ui, scene, selected_index);

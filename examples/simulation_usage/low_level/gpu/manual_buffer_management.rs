@@ -553,6 +553,10 @@ impl Simulation for ManualBufferSimulation {
         self.transfer_times.clear();
         let _ = self.setup_manual_buffers();
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

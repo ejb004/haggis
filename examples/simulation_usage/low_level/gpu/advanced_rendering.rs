@@ -631,6 +631,10 @@ impl Simulation for AdvancedRenderingSimulation {
         self.simulation_time = 0.0;
         let _ = self.initialize_simulation_data();
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

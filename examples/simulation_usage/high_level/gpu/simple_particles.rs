@@ -460,6 +460,10 @@ impl Simulation for SimpleParticleSystemGPU {
         self.sync_to_scene(scene);
         self.metrics = PerformanceMetrics::new();
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

@@ -44,16 +44,21 @@
 //! - [`gfx`] - Graphics rendering, camera system, and scene management
 //! - [`simulation`] - CPU and GPU simulation framework
 //! - [`ui`] - User interface system using Dear ImGui
+//! - [`visualization`] - Modular visualization system for 3D data
 //! - [`wgpu_utils`] - Utility functions for wgpu resource management
 
 pub mod app;
 pub mod gfx;
 pub mod simulation;
 pub mod ui;
+pub mod visualization;
 pub mod wgpu_utils;
 
 // Re-export main types for convenience
 pub use app::HaggisApp;
+
+// Re-export visualization types for external use
+pub use visualization::{CutPlane2D, VisualizationComponent, VisualizationManager};
 
 /// Creates a default Haggis application instance.
 ///

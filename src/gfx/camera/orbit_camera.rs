@@ -44,7 +44,7 @@ impl OrbitCamera {
             yaw,
             eye: Vector3::zero(), // Will be auto-calculted in `update()` nevertheless.
             target,
-            up: Vector3::unit_y(),
+            up: Vector3::unit_z(), // Z-up coordinate system
             bounds: OrbitCameraBounds::default(),
             aspect,
             fovy: cgmath::Rad(std::f32::consts::PI / 4.0),
@@ -176,9 +176,11 @@ fn calculate_cartesian_eye_position(
     distance: f32,
     target: Vector3<f32>,
 ) -> Vector3<f32> {
+    // Z-up coordinate system: X=right, Y=forward, Z=up
+    // Invert yaw to get correct rotation direction (negative yaw for right-handed system)
     return Vector3::new(
-        distance * yaw.sin() * pitch.cos(),
-        distance * pitch.sin(),
-        distance * yaw.cos() * pitch.cos(),
+        distance * (-yaw).sin() * pitch.cos(), // X: right (inverted yaw)
+        distance * (-yaw).cos() * pitch.cos(), // Y: forward (inverted yaw) 
+        distance * pitch.sin(),                 // Z: up
     ) + target;
 }

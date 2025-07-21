@@ -6,10 +6,13 @@
 use std::collections::HashMap;
 use wgpu::Device;
 
-use crate::wgpu_utils::{
-    binding_builder::{BindGroupBuilder, BindGroupLayoutBuilder, BindGroupLayoutWithDesc},
-    binding_types,
-    uniform_buffer::UniformBuffer,
+use crate::{
+    gfx::resources::texture_resource::TextureResource,
+    wgpu_utils::{
+        binding_builder::{BindGroupBuilder, BindGroupLayoutBuilder, BindGroupLayoutWithDesc},
+        binding_types,
+        uniform_buffer::UniformBuffer,
+    },
 };
 
 /// Material ID for referencing materials
@@ -38,9 +41,11 @@ pub struct MaterialBindings {
 
 impl MaterialBindings {
     pub fn new(device: &Device) -> Self {
-        // Create the layout using your existing builder but with explicit FRAGMENT visibility
+        // Create the layout with uniform buffer and texture/sampler for full material support
         let bind_group_layout = BindGroupLayoutBuilder::new()
-            .next_binding_fragment(binding_types::uniform()) // Use fragment-only binding
+            .next_binding_fragment(binding_types::uniform()) // Material uniform
+            .next_binding_fragment(binding_types::texture_2d()) // Diffuse texture
+            .next_binding_fragment(binding_types::sampler(wgpu::SamplerBindingType::Filtering)) // Texture sampler
             .create(device, "Material Bind Group");
 
         MaterialBindings {
@@ -49,12 +54,62 @@ impl MaterialBindings {
         }
     }
 
-    pub fn create_bind_group(&mut self, device: &Device, ubo: &MaterialUBO) {
-        self.bind_group = Some(
-            BindGroupBuilder::new(&self.bind_group_layout)
-                .resource(ubo.binding_resource())
-                .create(device, "Material Bind Group"),
-        );
+    pub fn create_bind_group(&mut self, device: &Device, ubo: &MaterialUBO, texture: Option<&TextureResource>) {
+        // Create default texture if none provided
+        let default_texture = if texture.is_none() {
+            Some(Self::create_default_texture(device))
+        } else {
+            None
+        };
+        
+        let tex_to_use = texture.unwrap_or_else(|| default_texture.as_ref().unwrap());
+        
+        let builder = BindGroupBuilder::new(&self.bind_group_layout)
+            .resource(ubo.binding_resource())
+            .resource(wgpu::BindingResource::TextureView(&tex_to_use.view))
+            .resource(wgpu::BindingResource::Sampler(&tex_to_use.sampler));
+
+        self.bind_group = Some(builder.create(device, "Material Bind Group"));
+    }
+
+    /// Create a default 1x1 white texture for materials without textures
+    fn create_default_texture(device: &Device) -> TextureResource {
+        // Create a simple 1x1 white texture that doesn't require data upload
+        let size = wgpu::Extent3d {
+            width: 1,
+            height: 1,
+            depth_or_array_layers: 1,
+        };
+
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("Default White Texture"),
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("Default Sampler"),
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::FilterMode::Nearest,
+            ..Default::default()
+        });
+
+        TextureResource {
+            texture,
+            view,
+            sampler,
+        }
     }
 
     pub fn bind_group_layouts(&self) -> &wgpu::BindGroupLayout {
@@ -84,6 +139,9 @@ pub struct Material {
     // GPU resources - shared by all objects using this material
     material_ubo: Option<MaterialUBO>,
     material_bindings: Option<MaterialBindings>,
+    
+    // Texture support
+    pub diffuse_texture: Option<TextureResource>,
 }
 
 impl Default for Material {
@@ -98,6 +156,7 @@ impl Default for Material {
             emissive: [0.0, 0.0, 0.0],
             material_ubo: None,
             material_bindings: None,
+            diffuse_texture: None,
         }
     }
 }
@@ -121,6 +180,7 @@ impl Material {
             emissive: [0.0, 0.0, 0.0],
             material_ubo: None,
             material_bindings: None,
+            diffuse_texture: None,
         }
     }
 
@@ -154,6 +214,19 @@ impl Material {
         self
     }
 
+    /// Builder pattern: Set diffuse texture
+    pub fn with_texture(mut self, texture: TextureResource) -> Self {
+        self.diffuse_texture = Some(texture);
+        self
+    }
+
+    /// Set diffuse texture on existing material
+    pub fn set_texture(&mut self, texture: TextureResource) {
+        self.diffuse_texture = Some(texture);
+        // Mark material bindings as dirty so they get recreated with texture
+        self.material_bindings = None;
+    }
+
     /// Updates GPU resources for this material
     ///
     /// Must be called after material properties change to sync with GPU.
@@ -168,7 +241,7 @@ impl Material {
         if self.material_bindings.is_none() {
             let mut bindings = MaterialBindings::new(device);
 
-            bindings.create_bind_group(device, self.material_ubo.as_ref().unwrap());
+            bindings.create_bind_group(device, self.material_ubo.as_ref().unwrap(), self.diffuse_texture.as_ref());
 
             self.material_bindings = Some(bindings);
         }

@@ -366,6 +366,10 @@ impl Simulation for SimpleParticleSystemCPU {
         }
         self.sync_to_scene(scene);
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

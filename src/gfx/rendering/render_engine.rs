@@ -16,6 +16,7 @@ use crate::gfx::{
 };
 
 use super::pipeline_manager::{PipelineConfig, PipelineManager};
+use super::visualization_renderer::{VisualizationRenderer, VisualizationPlane};
 
 /// Core rendering engine managing GPU resources and draw calls
 ///
@@ -47,6 +48,9 @@ pub struct RenderEngine {
     blur_bind_group: wgpu::BindGroup,   // For blur pass
 
     light_config: LightConfig,
+
+    // Visualization rendering system
+    visualization_renderer: VisualizationRenderer,
 }
 
 impl RenderEngine {
@@ -288,20 +292,12 @@ impl RenderEngine {
                 }],
             });
 
-        let material_bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("Material Bind Group Layout"),
-                entries: &[wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                }],
-            });
+        // Create a temporary material bindings to get the layout that matches our material system
+        let temp_material_bindings = crate::gfx::resources::material::MaterialBindings::new(&device);
+        let material_bind_group_layout = temp_material_bindings.bind_group_layouts().clone();
+
+        // Create visualization renderer (before device is moved)
+        let visualization_renderer = VisualizationRenderer::new(&device, format);
 
         // Wrap device and queue in Arc for pipeline manager
         let device_handle: Arc<Device> = device.into();
@@ -380,18 +376,20 @@ impl RenderEngine {
             shadow_bind_group,
             blur_bind_group,
             light_config,
+            visualization_renderer,
         }
     }
 
-    /// Renders a frame with optional UI overlay
+    /// Renders a frame with optional UI overlay and visualization planes
     ///
     /// Performs multi-pass rendering: shadow mapping, depth-to-color conversion,
-    /// blur, main scene rendering, and optional UI overlay.
+    /// blur, main scene rendering, visualization rendering, and optional UI overlay.
     ///
     /// # Arguments
     /// * `scene` - Scene containing objects to render
+    /// * `visualization_planes` - Visualization planes with simulation data
     /// * `ui_callback` - Optional function that renders UI elements
-    pub fn render_frame<F>(&mut self, scene: &Scene, ui_callback: Option<F>)
+    pub fn render_frame<F>(&mut self, scene: &Scene, visualization_planes: &[VisualizationPlane], ui_callback: Option<F>)
     where
         F: FnOnce(&wgpu::Device, &wgpu::Queue, &mut wgpu::CommandEncoder, &wgpu::TextureView),
     {
@@ -533,7 +531,22 @@ impl RenderEngine {
             }
         }
 
-        // PASS 5: UI overlay (if provided)
+        // PASS 5: Visualization rendering (separate from scene objects)
+        if !visualization_planes.is_empty() {
+            // Update visualization camera with scene camera
+            self.visualization_renderer.update_camera(&self.queue, scene.camera_manager.get_view_proj_matrix());
+            
+            // Render visualization planes with their simulation data
+            self.visualization_renderer.render_visualization_pass(
+                &mut encoder,
+                &surface_texture_view,
+                &self.depth_texture.view,
+                visualization_planes,
+                &self.queue,
+            );
+        }
+
+        // PASS 6: UI overlay (if provided)
         if let Some(ui_callback) = ui_callback {
             ui_callback(
                 &self.device,
@@ -547,20 +560,43 @@ impl RenderEngine {
         surface_texture.present();
     }
 
-    /// Convenience method for rendering without UI
+    /// Convenience method for rendering without UI or visualizations
     pub fn render_frame_simple(&mut self, scene: &Scene) {
         self.render_frame(
             scene,
+            &[], // No visualization planes
             None::<fn(&wgpu::Device, &wgpu::Queue, &mut wgpu::CommandEncoder, &wgpu::TextureView)>,
         );
     }
 
-    /// Convenience method for rendering with UI
+    /// Convenience method for rendering with UI but no visualizations
     pub fn render_frame_with_ui<F>(&mut self, scene: &Scene, ui_callback: F)
     where
         F: FnOnce(&wgpu::Device, &wgpu::Queue, &mut wgpu::CommandEncoder, &wgpu::TextureView),
     {
-        self.render_frame(scene, Some(ui_callback));
+        self.render_frame(scene, &[], Some(ui_callback));
+    }
+
+    /// Convenience method for rendering with visualizations but no UI
+    pub fn render_frame_with_visualizations(&mut self, scene: &Scene, visualization_planes: &[VisualizationPlane]) {
+        self.render_frame(
+            scene,
+            visualization_planes,
+            None::<fn(&wgpu::Device, &wgpu::Queue, &mut wgpu::CommandEncoder, &wgpu::TextureView)>,
+        );
+    }
+
+    /// Convenience method for rendering with both visualizations and UI
+    pub fn render_frame_with_visualizations_and_ui<F>(
+        &mut self, 
+        scene: &Scene, 
+        visualization_planes: &[VisualizationPlane],
+        ui_callback: F
+    )
+    where
+        F: FnOnce(&wgpu::Device, &wgpu::Queue, &mut wgpu::CommandEncoder, &wgpu::TextureView),
+    {
+        self.render_frame(scene, visualization_planes, Some(ui_callback));
     }
 
     /// Updates camera and light uniform buffers

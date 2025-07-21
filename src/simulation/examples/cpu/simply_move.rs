@@ -144,4 +144,8 @@ impl Simulation for SimplyMove {
         // Reset objects to initial positions when simulation is removed
         self.reset(scene);
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }

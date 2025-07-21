@@ -26,6 +26,11 @@ impl CameraManager {
         self.controller
             .process_keyed_events(event, &mut self.camera);
     }
+
+    /// Get the view projection matrix from the camera
+    pub fn get_view_proj_matrix(&self) -> cgmath::Matrix4<f32> {
+        self.camera.build_view_projection_matrix()
+    }
 }
 
 pub trait Camera: Sized {

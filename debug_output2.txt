@@ -1,0 +1,102 @@
+   Compiling haggis v0.1.0 (/Users/ethanbeddard/Documents/DigitalProjects/haggis)
+warning: unused import: `base_simulation::BaseSimulation`
+ --> src/simulation/manager.rs:6:33
+  |
+6 | use super::{traits::Simulation, base_simulation::BaseSimulation};
+  |                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+warning: use of deprecated type alias `wgpu::ImageCopyTexture`: This has been renamed to `TexelCopyTextureInfo`, and will be removed in 25.0.0.
+   --> src/gfx/resources/texture_resource.rs:163:19
+    |
+163 |             wgpu::ImageCopyTexture {
+    |                   ^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated type alias `wgpu::ImageDataLayout`: This has been renamed to `TexelCopyBufferLayout`, and will be removed in 25.0.0.
+   --> src/gfx/resources/texture_resource.rs:170:19
+    |
+170 |             wgpu::ImageDataLayout {
+    |                   ^^^^^^^^^^^^^^^
+
+warning: method `update_simulation_visualization_textures` is never used
+   --> src/simulation/manager.rs:249:8
+    |
+20  | impl SimulationManager {
+    | ---------------------- method in this implementation
+...
+249 |     fn update_simulation_visualization_textures(
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` on by default
+
+warning: fields `use_gpu` and `gpu_resources` are never read
+  --> src/simulation/high_level.rs:47:5
+   |
+42 | pub struct ParticleSystem {
+   |            -------------- fields in this struct
+...
+47 |     use_gpu: bool,
+   |     ^^^^^^^
+48 |     needs_gpu_update: bool,
+49 |     gpu_resources: Option<GpuParticleResources>,
+   |     ^^^^^^^^^^^^^
+
+warning: fields `particle_buffer`, `compute_pipeline`, and `bind_group` are never read
+   --> src/simulation/high_level.rs:108:5
+    |
+106 | struct GpuParticleResources {
+    |        -------------------- fields in this struct
+107 |     // This will be populated when we implement GPU support
+108 |     particle_buffer: Option<wgpu::Buffer>,
+    |     ^^^^^^^^^^^^^^^
+109 |     compute_pipeline: Option<wgpu::ComputePipeline>,
+    |     ^^^^^^^^^^^^^^^^
+110 |     bind_group: Option<wgpu::BindGroup>,
+    |     ^^^^^^^^^^
+
+warning: trait `SimulationAny` is never used
+   --> src/simulation/mid_level.rs:188:7
+    |
+188 | trait SimulationAny {
+    |       ^^^^^^^^^^^^^
+
+warning: field `current_batch` is never read
+   --> src/simulation/mid_level.rs:374:5
+    |
+372 | pub struct BatchProcessor {
+    |            -------------- field in this struct
+373 |     batch_size: usize,
+374 |     current_batch: Vec<usize>,
+    |     ^^^^^^^^^^^^^
+
+warning: field `active_pass` is never read
+  --> src/simulation/low_level.rs:41:5
+   |
+37 | pub struct ComputeContext {
+   |            -------------- field in this struct
+...
+41 |     active_pass: Option<wgpu::ComputePass<'static>>,
+   |     ^^^^^^^^^^^
+
+warning: fields `device`, `query_set`, `resolve_buffer`, `result_buffer`, and `timestamp_count` are never read
+   --> src/simulation/low_level.rs:665:5
+    |
+664 | pub struct GpuProfiler {
+    |            ----------- fields in this struct
+665 |     device: Arc<Device>,
+    |     ^^^^^^
+666 |     query_set: Option<wgpu::QuerySet>,
+    |     ^^^^^^^^^
+667 |     resolve_buffer: Option<Buffer>,
+    |     ^^^^^^^^^^^^^^
+668 |     result_buffer: Option<Buffer>,
+    |     ^^^^^^^^^^^^^
+669 |     timestamp_count: u32,
+    |     ^^^^^^^^^^^^^^^
+
+warning: `haggis` (lib) generated 10 warnings (run `cargo fix --lib -p haggis` to apply 1 suggestion)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.77s
+     Running `target/debug/examples/cut_plane_demo`

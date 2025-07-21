@@ -64,7 +64,8 @@ use crate::{
         scene::{object::ObjectBuilder, scene::Scene},
     },
     simulation::{manager::SimulationManager, traits::Simulation},
-    ui::manager::UiManager,
+    ui::{manager::UiManager, panel::default_transform_panel},
+    visualization::{manager::VisualizationManager, traits::VisualizationComponent},
 };
 
 /// UI callback function signature for custom user interface rendering.
@@ -167,6 +168,8 @@ pub struct AppState {
     selected_object_index: Option<usize>,
     /// Simulation management system
     pub simulation_manager: SimulationManager,
+    /// Visualization management system
+    pub visualization_manager: VisualizationManager,
 }
 
 impl HaggisApp {
@@ -210,6 +213,7 @@ impl HaggisApp {
                 ui_callback: None,
                 selected_object_index: Some(0),
                 simulation_manager: SimulationManager::new(),
+                visualization_manager: VisualizationManager::new(),
             },
         }
     }
@@ -272,6 +276,62 @@ impl HaggisApp {
     /// An optional reference to the simulation name, or `None` if no simulation is attached.
     pub fn current_simulation(&self) -> Option<&str> {
         self.app_state.simulation_manager.current_simulation_name()
+    }
+
+    /// Add a visualization component to the engine.
+    ///
+    /// This method registers a visualization component that will be updated every frame
+    /// and rendered in its own UI panel.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Unique name for the visualization component
+    /// * `component` - The visualization component to add
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use haggis::{HaggisApp, visualization::CutPlane2D};
+    ///
+    /// let mut app = haggis::default();
+    /// let cut_plane = CutPlane2D::new();
+    /// app.add_visualization("cut_plane", Box::new(cut_plane));
+    /// ```
+    pub fn add_visualization<T: VisualizationComponent + 'static>(
+        &mut self,
+        name: &str,
+        component: T,
+    ) {
+        self.app_state
+            .visualization_manager
+            .add_component(name.to_string(), Box::new(component));
+    }
+
+    /// Remove a visualization component from the engine.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Name of the visualization component to remove
+    pub fn remove_visualization(&mut self, name: &str) {
+        self.app_state.visualization_manager.remove_component(name);
+    }
+
+    /// Check if the visualization system is enabled.
+    ///
+    /// # Returns
+    ///
+    /// `true` if visualizations are enabled, `false` otherwise.
+    pub fn is_visualization_enabled(&self) -> bool {
+        self.app_state.visualization_manager.is_enabled()
+    }
+
+    /// Set the enabled state of the visualization system.
+    ///
+    /// # Arguments
+    ///
+    /// * `enabled` - `true` to enable visualizations, `false` to disable them
+    pub fn set_visualization_enabled(&mut self, enabled: bool) {
+        self.app_state.visualization_manager.set_enabled(enabled);
     }
 
     /// Sets the UI callback function for custom user interface rendering.
@@ -485,6 +545,10 @@ impl ApplicationHandler for AppState {
             if let Some(render_engine) = &self.render_engine {
                 self.simulation_manager
                     .initialize_gpu(render_engine.device(), render_engine.queue());
+
+                // Initialize GPU resources for visualizations
+                self.visualization_manager
+                    .initialize_gpu(render_engine.device(), render_engine.queue());
             }
         }
     }
@@ -596,14 +660,39 @@ impl ApplicationHandler for AppState {
                     Some(render_engine.queue()),
                 );
 
+                // Update visualizations (no longer creates scene objects)
+                self.visualization_manager.update(
+                    delta_time,
+                    Some(render_engine.device()),
+                    Some(render_engine.queue()),
+                );
+
+                // Initialize GPU resources for any new scene objects (but not visualizations)
+                self.scene
+                    .init_gpu_resources(render_engine.device(), render_engine.queue());
+
+                // Update materials for scene objects (but not visualizations)
+                self.scene
+                    .update_materials(render_engine.device(), render_engine.queue());
+
                 // Update phase: Scene logic and UI interaction
                 self.scene.update();
                 if let (Some(ui_manager), Some(ui_callback)) =
                     (self.ui_manager.as_mut(), &self.ui_callback)
                 {
                     let ui_wants_input = ui_manager.update_logic(window, |ui| {
+                        // Render default object transformation UI (left side)
+                        default_transform_panel(
+                            ui,
+                            &mut self.scene,
+                            &mut self.selected_object_index,
+                        );
+
                         // Render simulation UI first
                         self.simulation_manager.render_ui(ui, &mut self.scene);
+
+                        // Render visualization UI (right side)
+                        self.visualization_manager.render_ui(ui);
 
                         // Then render user UI callback if provided
                         ui_callback(ui, &mut self.scene, &mut self.selected_object_index);
@@ -614,9 +703,17 @@ impl ApplicationHandler for AppState {
                         // Camera input processing would happen here
                     }
                 } else if let Some(ui_manager) = self.ui_manager.as_mut() {
-                    // If no user UI callback, still render simulation UI
+                    // If no user UI callback, still render default UI, simulation UI and visualizations
                     let _ui_wants_input = ui_manager.update_logic(window, |ui| {
+                        // Render default object transformation UI (left side)
+                        default_transform_panel(
+                            ui,
+                            &mut self.scene,
+                            &mut self.selected_object_index,
+                        );
+
                         self.simulation_manager.render_ui(ui, &mut self.scene);
+                        self.visualization_manager.render_ui(ui);
                     });
                 }
 
@@ -633,10 +730,16 @@ impl ApplicationHandler for AppState {
 
                 render_engine.update(self.scene.camera_manager.camera.uniform);
 
+                // Collect visualization planes from both the visualization manager and simulation manager
+                let mut visualization_planes = self.visualization_manager.get_visualization_planes();
+                let simulation_planes = self.simulation_manager.get_visualization_planes();
+                visualization_planes.extend(simulation_planes);
+
                 if self.ui_manager.is_some() {
-                    // Render 3D scene with UI overlay
-                    render_engine.render_frame_with_ui(
+                    // Render 3D scene with visualization planes and UI overlay
+                    render_engine.render_frame_with_visualizations_and_ui(
                         &self.scene,
+                        &visualization_planes,
                         |device, queue, encoder, color_attachment| {
                             self.ui_manager.as_mut().unwrap().render_display_only(
                                 device,
@@ -648,8 +751,8 @@ impl ApplicationHandler for AppState {
                         },
                     );
                 } else {
-                    // Render 3D scene only
-                    render_engine.render_frame_simple(&self.scene);
+                    // Render 3D scene with visualization planes only
+                    render_engine.render_frame_with_visualizations(&self.scene, &visualization_planes);
                 }
             }
             _ => (),

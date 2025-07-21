@@ -300,6 +300,10 @@ impl Simulation for QuickstartSimulation {
     fn reset(&mut self, _scene: &mut Scene) {
         self.reset_simulation();
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 /// Main function - this is where everything starts

@@ -496,6 +496,10 @@ impl Simulation for CustomComputeSimulation {
         self.simulation_time = 0.0;
         let _ = self.setup_buffers();
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

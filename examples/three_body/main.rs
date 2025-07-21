@@ -692,6 +692,10 @@ impl Simulation for ThreeBodySimulation {
     fn reset(&mut self, _scene: &mut Scene) {
         self.set_configuration(self.configuration);
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 /// Main function - Entry point for the three-body simulation

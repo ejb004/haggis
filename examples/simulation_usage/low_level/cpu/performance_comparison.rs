@@ -710,6 +710,10 @@ impl Simulation for LowLevelCPUSimulation {
         self.metrics = DetailedPerformanceMetrics::new();
         self.initialize(scene);
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

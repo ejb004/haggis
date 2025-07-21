@@ -53,6 +53,7 @@
 //!
 //! [`HaggisApp`]: crate::app::HaggisApp
 
+pub mod base_simulation;
 pub mod cpu;
 pub mod examples;
 pub mod gpu;
@@ -65,6 +66,7 @@ pub mod mid_level;
 pub mod low_level;
 
 // Re-export for convenience
+pub use base_simulation::BaseSimulation;
 pub use high_level::{ParticleSystem, ParticleSimulation, ForceField, Constraint};
 pub use mid_level::{ManagedSimulation, SimulationExt, GpuResourceManager};
 pub use low_level::{ComputeContext, RawGpuSimulation, GpuParticle};

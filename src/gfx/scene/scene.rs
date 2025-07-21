@@ -3,10 +3,9 @@ use wgpu::Device;
 use crate::gfx::{
     camera::camera_utils::CameraManager,
     resources::material::{Material, MaterialManager},
-    scene::object::Mesh,
 };
 
-use super::object::Object;
+use super::{object::Object, object::Mesh};
 
 /// Main scene containing objects, materials, and camera
 pub struct Scene {
@@ -316,6 +315,52 @@ impl Scene {
 
         test_name
     }
+
+    /// Creates a procedural plane object for visualization
+    ///
+    /// # Arguments
+    /// * `name` - Name for the plane object
+    /// * `orientation` - Plane orientation (XY, XZ, or YZ)
+    /// * `position` - Position along the normal axis
+    /// * `size` - Size of the plane
+    /// * `material_name` - Name of the material to use
+    ///
+    /// # Returns
+    /// Index of the created object
+    pub fn add_plane_object(
+        &mut self,
+        name: &str,
+        orientation: &str,
+        position: f32,
+        size: f32,
+        material_name: &str,
+    ) -> usize {
+        println!("Creating plane object: {} ({} at {})", name, orientation, position);
+        
+        // Create plane geometry based on orientation
+        let (positions, normals, indices) = match orientation {
+            "XY" => create_xy_plane_geometry(position, size),
+            "XZ" => create_xz_plane_geometry(position, size),
+            "YZ" => create_yz_plane_geometry(position, size),
+            _ => create_xy_plane_geometry(position, size), // Default to XY
+        };
+
+        let mesh = Mesh::new(positions, normals, indices);
+        let mut object = Object::new(vec![mesh]);
+        
+        // Set object properties
+        let unique_name = self.ensure_unique_name(name);
+        object.set_name(unique_name);
+        object.set_material(material_name);
+        object.visible = true;
+        
+        // Add to scene
+        self.objects.push(object);
+        let object_index = self.objects.len() - 1;
+        
+        println!("Plane object created at index {}", object_index);
+        object_index
+    }
 }
 
 /// Scene statistics for debugging and UI display
@@ -325,4 +370,89 @@ pub struct SceneStatistics {
     pub material_count: usize,
     pub total_triangles: u32,
     pub total_vertices: u32,
+}
+
+/// Helper functions for creating plane geometry
+
+/// Creates an XY plane (normal along Z axis)
+fn create_xy_plane_geometry(z_position: f32, size: f32) -> (Vec<f32>, Vec<f32>, Vec<u32>) {
+    let half_size = size / 2.0;
+    
+    // 4 vertices for a quad
+    let positions = vec![
+        -half_size, -half_size, z_position, // Bottom-left
+         half_size, -half_size, z_position, // Bottom-right
+         half_size,  half_size, z_position, // Top-right
+        -half_size,  half_size, z_position, // Top-left
+    ];
+    
+    // All normals point up (positive Z)
+    let normals = vec![
+        0.0, 0.0, 1.0,
+        0.0, 0.0, 1.0,
+        0.0, 0.0, 1.0,
+        0.0, 0.0, 1.0,
+    ];
+    
+    // Two triangles making a quad
+    let indices = vec![
+        0, 1, 2,  // First triangle
+        0, 2, 3,  // Second triangle
+    ];
+    
+    (positions, normals, indices)
+}
+
+/// Creates an XZ plane (normal along Y axis)
+fn create_xz_plane_geometry(y_position: f32, size: f32) -> (Vec<f32>, Vec<f32>, Vec<u32>) {
+    let half_size = size / 2.0;
+    
+    let positions = vec![
+        -half_size, y_position, -half_size, // Bottom-left
+         half_size, y_position, -half_size, // Bottom-right
+         half_size, y_position,  half_size, // Top-right
+        -half_size, y_position,  half_size, // Top-left
+    ];
+    
+    // All normals point forward (positive Y)
+    let normals = vec![
+        0.0, 1.0, 0.0,
+        0.0, 1.0, 0.0,
+        0.0, 1.0, 0.0,
+        0.0, 1.0, 0.0,
+    ];
+    
+    let indices = vec![
+        0, 1, 2,
+        0, 2, 3,
+    ];
+    
+    (positions, normals, indices)
+}
+
+/// Creates a YZ plane (normal along X axis)
+fn create_yz_plane_geometry(x_position: f32, size: f32) -> (Vec<f32>, Vec<f32>, Vec<u32>) {
+    let half_size = size / 2.0;
+    
+    let positions = vec![
+        x_position, -half_size, -half_size, // Bottom-left
+        x_position,  half_size, -half_size, // Bottom-right
+        x_position,  half_size,  half_size, // Top-right
+        x_position, -half_size,  half_size, // Top-left
+    ];
+    
+    // All normals point right (positive X)
+    let normals = vec![
+        1.0, 0.0, 0.0,
+        1.0, 0.0, 0.0,
+        1.0, 0.0, 0.0,
+        1.0, 0.0, 0.0,
+    ];
+    
+    let indices = vec![
+        0, 1, 2,
+        0, 2, 3,
+    ];
+    
+    (positions, normals, indices)
 }

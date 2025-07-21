@@ -195,7 +195,7 @@ impl<T: Simulation + 'static> SimulationAny for T {
     }
 }
 
-impl<T: Simulation> Simulation for ManagedSimulation<T> {
+impl<T: Simulation + 'static> Simulation for ManagedSimulation<T> {
     fn initialize(&mut self, scene: &mut Scene) {
         self.simulation.initialize(scene);
     }
@@ -272,6 +272,10 @@ impl<T: Simulation> Simulation for ManagedSimulation<T> {
 
     fn is_gpu_ready(&self) -> bool {
         self.simulation.is_gpu_ready()
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }
 

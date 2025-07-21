@@ -409,4 +409,8 @@ impl Simulation for GpuSimplyMove {
     fn is_gpu_ready(&self) -> bool {
         self.gpu_ready
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
