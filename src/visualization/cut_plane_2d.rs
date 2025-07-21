@@ -451,6 +451,10 @@ impl VisualizationComponent for CutPlane2D {
         self
     }
 
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
+
     fn update_material_texture(&mut self, scene: &mut Scene, device: &Device, queue: &Queue) {
         if !self.enabled {
             return;

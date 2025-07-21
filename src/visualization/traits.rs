@@ -186,4 +186,7 @@ pub trait VisualizationComponent {
 
     /// Support for downcasting to concrete types
     fn as_any(&self) -> &dyn Any;
+
+    /// Support for mutable downcasting to concrete types
+    fn as_any_mut(&mut self) -> &mut dyn Any;
 }

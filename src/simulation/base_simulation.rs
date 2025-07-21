@@ -97,6 +97,11 @@ impl BaseSimulation {
         &mut self.visualization_manager
     }
 
+    /// Get a mutable reference to a specific visualization component
+    pub fn get_visualization_mut(&mut self, name: &str) -> Option<&mut Box<dyn VisualizationComponent>> {
+        self.visualization_manager.get_component_mut(name)
+    }
+
     /// Update visualization material textures (public method for external calls)
     pub fn update_viz_textures(&mut self, scene: &mut Scene, device: &Device, queue: &Queue) {
         self.update_visualization_material_textures(scene, device, queue);
