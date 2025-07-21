@@ -78,3 +78,13 @@ path = "examples/simulation_usage/low_level/gpu/manual_buffer_management.rs"
 [[example]]
 name = "advanced_rendering"
 path = "examples/simulation_usage/low_level/gpu/advanced_rendering.rs"
+
+# Conway's Game of Life - 2D visualization example
+[[example]]
+name = "conways_game_of_life"
+path = "examples/conways_game_of_life/main.rs"
+
+# Conway's Game of Life - Simple CPU implementation
+[[example]]
+name = "conways_game_of_life_cpu"
+path = "examples/conways_game_of_life_cpu/main.rs"
