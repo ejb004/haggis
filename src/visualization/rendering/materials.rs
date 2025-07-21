@@ -1,25 +1,165 @@
 //! Visualization Materials
 //!
 //! Materials specifically for visualization components, separate from scene materials.
+//! Supports both traditional texture-based rendering and direct GPU buffer access.
 
 use crate::gfx::resources::texture_resource::TextureResource;
+use crate::visualization::cut_plane_2d::BufferFormat;
+use crate::visualization::ui::cut_plane_controls::VisualizationMode;
+use std::sync::Arc;
 use wgpu::*;
 
 /// Material for visualization components
 #[derive(Clone)]
 pub struct VisualizationMaterial {
-    pub texture: TextureResource,
+    pub texture: Option<TextureResource>,        // For CPU data
+    pub data_buffer: Option<Arc<Buffer>>,        // For GPU data
+    pub buffer_format: Option<BufferFormat>,     // GPU buffer format
+    pub visualization_mode: VisualizationMode,   // How to render the data
     pub bind_group: Option<BindGroup>,
     pub transform_buffer: Option<Buffer>,
 }
 
 impl VisualizationMaterial {
-    /// Create a new visualization material
+    /// Create a new visualization material from texture (legacy)
     pub fn new(texture: TextureResource) -> Self {
         Self {
-            texture,
+            texture: Some(texture),
+            data_buffer: None,
+            buffer_format: None,
+            visualization_mode: VisualizationMode::Heatmap,
             bind_group: None,
             transform_buffer: None,
+        }
+    }
+
+    /// Create a material from GPU buffer (high-performance path)
+    pub fn from_gpu_buffer(
+        device: &Device,
+        buffer: Arc<Buffer>,
+        format: BufferFormat,
+        mode: VisualizationMode,
+        label: &str,
+    ) -> Self {
+        // Create transform buffer
+        let _identity_matrix: [[f32; 4]; 4] = [
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ];
+
+        let transform_buffer = device.create_buffer(&BufferDescriptor {
+            label: Some(&format!("{} Transform Buffer", label)),
+            size: std::mem::size_of::<[[f32; 4]; 4]>() as BufferAddress,
+            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        // Note: Transform will be updated later via update_transform method
+
+        // Create bind group layout for GPU buffer access - MUST match shader bindings
+        let layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+            label: Some(&format!("{} GPU Buffer Layout", label)),
+            entries: &[
+                // Dummy texture binding (binding 0) - required by pipeline but unused
+                BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: ShaderStages::FRAGMENT,
+                    ty: BindingType::Texture {
+                        multisampled: false,
+                        view_dimension: TextureViewDimension::D2,
+                        sample_type: TextureSampleType::Float { filterable: true },
+                    },
+                    count: None,
+                },
+                // Dummy sampler binding (binding 1) - required by pipeline but unused
+                BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: ShaderStages::FRAGMENT,
+                    ty: BindingType::Sampler(SamplerBindingType::Filtering),
+                    count: None,
+                },
+                // Transform uniform buffer (binding 2) - matches shader
+                BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: ShaderStages::VERTEX,
+                    ty: BindingType::Buffer {
+                        ty: BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                // GPU data buffer (binding 3) - matches shader storage buffer binding
+                BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: ShaderStages::FRAGMENT,
+                    ty: BindingType::Buffer {
+                        ty: BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+            ],
+        });
+
+        // Create dummy texture and sampler for bindings 0 and 1
+        let dummy_texture = device.create_texture(&TextureDescriptor {
+            label: Some("GPU Material Dummy Texture"),
+            size: Extent3d { width: 1, height: 1, depth_or_array_layers: 1 },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: TextureDimension::D2,
+            format: TextureFormat::Rgba8Unorm,
+            usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+
+        let dummy_texture_view = dummy_texture.create_view(&TextureViewDescriptor::default());
+        
+        let dummy_sampler = device.create_sampler(&SamplerDescriptor {
+            label: Some("GPU Material Dummy Sampler"),
+            address_mode_u: AddressMode::ClampToEdge,
+            address_mode_v: AddressMode::ClampToEdge,
+            address_mode_w: AddressMode::ClampToEdge,
+            mag_filter: FilterMode::Linear,
+            min_filter: FilterMode::Linear,
+            mipmap_filter: FilterMode::Nearest,
+            ..Default::default()
+        });
+
+        let bind_group = device.create_bind_group(&BindGroupDescriptor {
+            label: Some(&format!("{} GPU Buffer Bind Group", label)),
+            layout: &layout,
+            entries: &[
+                BindGroupEntry {
+                    binding: 0,
+                    resource: BindingResource::TextureView(&dummy_texture_view), // Dummy texture
+                },
+                BindGroupEntry {
+                    binding: 1,
+                    resource: BindingResource::Sampler(&dummy_sampler), // Dummy sampler
+                },
+                BindGroupEntry {
+                    binding: 2,
+                    resource: transform_buffer.as_entire_binding(), // Transform buffer
+                },
+                BindGroupEntry {
+                    binding: 3,
+                    resource: buffer.as_entire_binding(), // GPU data buffer
+                },
+            ],
+        });
+
+        Self {
+            texture: None,
+            data_buffer: Some(buffer),
+            buffer_format: Some(format),
+            visualization_mode: mode,
+            bind_group: Some(bind_group),
+            transform_buffer: Some(transform_buffer),
         }
     }
 
@@ -31,11 +171,11 @@ impl VisualizationMaterial {
             entries: &[
                 BindGroupEntry {
                     binding: 0,
-                    resource: BindingResource::TextureView(&self.texture.view),
+                    resource: BindingResource::TextureView(&self.texture.as_ref().unwrap().view),
                 },
                 BindGroupEntry {
                     binding: 1,
-                    resource: BindingResource::Sampler(&self.texture.sampler),
+                    resource: BindingResource::Sampler(&self.texture.as_ref().unwrap().sampler),
                 },
             ],
         }));
@@ -164,7 +304,10 @@ impl VisualizationMaterial {
         });
 
         Self {
-            texture,
+            texture: Some(texture),
+            data_buffer: None,
+            buffer_format: None,
+            visualization_mode: VisualizationMode::Heatmap,
             bind_group: Some(bind_group),
             transform_buffer: Some(transform_buffer),
         }

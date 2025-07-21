@@ -23,9 +23,11 @@
 
 use cgmath::Vector3;
 use haggis::{
-    simulation::BaseSimulation, visualization::traits::VisualizationComponent, CutPlane2D,
+    simulation::BaseSimulation, 
+    visualization::{traits::VisualizationComponent, cut_plane_2d::BufferElementType}, 
+    CutPlane2D,
 };
-use std::time::Instant;
+use std::{time::Instant, sync::Arc};
 use wgpu::{Device, Queue};
 
 /// Grid size for the Game of Life
@@ -464,25 +466,56 @@ impl ConwaysGpuSimulation {
                     );
                 }
 
-                // Update existing visualization properly
-                self.update_visualization_with_data(viz_data, device, queue);
+                // NEW: Use direct GPU buffer visualization instead of CPU transfer!
+                self.update_visualization_direct(device, queue);
             }
         }
     }
 
-    /// Update the existing visualization with new data (matching CPU version approach)
+    /// Update visualization using direct GPU buffer (high-performance approach)
+    fn update_visualization_direct(&mut self, device: &Device, queue: &Queue) {
+        if let Some(ref gpu_resources) = self.gpu_resources {
+            // Get current GPU buffer (no CPU transfer needed!)
+            let current_buffer = if gpu_resources.ping_pong_state {
+                Arc::new(gpu_resources.buffer_b.clone())
+            } else {
+                Arc::new(gpu_resources.buffer_a.clone())
+            };
+
+            // Create CutPlane2D that references GPU buffer directly
+            let mut data_plane = CutPlane2D::new();
+            data_plane.set_position(Vector3::new(0.0, 2.0, 0.0));
+            data_plane.set_size(2.0);
+
+            // Use the new GPU buffer API - this is the key optimization!
+            data_plane.update_u32_buffer(current_buffer, self.width, self.height);
+
+            // Initialize with GPU resources
+            data_plane.initialize(Some(device), Some(queue));
+            data_plane.update(0.0, Some(device), Some(queue));
+
+            // Replace the visualization
+            self.base.remove_visualization("data_plane");
+            self.base.add_visualization("data_plane", data_plane);
+
+            // Debug output for initial generations
+            if self.generation == 0 {
+                println!("📊 Direct GPU buffer visualization initialized (NO CPU TRANSFER!)");
+            }
+        }
+    }
+
+    /// Fallback: Update visualization with CPU data (legacy approach for compatibility)
     fn update_visualization_with_data(&mut self, data: Vec<f32>, device: &Device, queue: &Queue) {
         let live_count = data.iter().filter(|&&val| val > 0.0).count();
 
-        // Create a new CutPlane2D with proper GPU initialization
+        // Create a new CutPlane2D with CPU data
         let mut data_plane = CutPlane2D::new();
-
-        // Set data and geometry
         data_plane.update_data(data, self.width, self.height);
         data_plane.set_position(Vector3::new(0.0, 2.0, 0.0));
         data_plane.set_size(2.0);
 
-        // CRITICAL: Initialize the material with GPU resources (was missing!)
+        // Initialize the material with GPU resources
         data_plane.initialize(Some(device), Some(queue));
         data_plane.update(0.0, Some(device), Some(queue));
 
@@ -492,9 +525,10 @@ impl ConwaysGpuSimulation {
 
         // Debug output for initial generations
         if self.generation == 0 {
-            println!("📊 Initial visualization: {} live cells", live_count);
+            println!("📊 Fallback CPU visualization: {} live cells", live_count);
         }
     }
+
 
     /// Run one GPU compute step
     fn run_gpu_compute_step(&mut self, device: &Device, queue: &Queue) {

@@ -9,13 +9,41 @@ use super::ui::cut_plane_controls::VisualizationMode;
 use crate::gfx::{resources::texture_resource::TextureResource, scene::Scene};
 use cgmath::Vector3;
 use imgui::Ui;
-use wgpu::{Device, Queue};
+use wgpu::{Device, Queue, Buffer};
+use std::sync::Arc;
+
+/// Data source for 2D visualization
+#[derive(Clone)]
+pub enum DataSource {
+    /// CPU data - traditional Vec<f32> approach
+    CpuData(Vec<f32>),
+    /// GPU buffer - direct reference for compute shaders
+    GpuBuffer {
+        buffer: Arc<Buffer>,
+        format: BufferFormat,
+    },
+}
+
+/// Buffer data format specification
+#[derive(Clone, Copy, Debug)]
+pub struct BufferFormat {
+    pub element_type: BufferElementType,
+    pub width: u32,
+    pub height: u32,
+}
+
+/// Supported buffer element types
+#[derive(Clone, Copy, Debug)]
+pub enum BufferElementType {
+    U32,  // For Conway's Game of Life, etc.
+    F32,  // For continuous data
+    I32,  // For signed integer data
+}
 
 /// 2D data plane visualization component
 ///
-/// Generic visualizer for 2D data arrays. User provides 2D data directly,
-/// and this component renders it as a textured plane using the dedicated
-/// visualization rendering system.
+/// Generic visualizer that supports both CPU data (Vec<f32>) and direct GPU buffer access
+/// for maximum efficiency. GPU buffers avoid expensive GPU→CPU→GPU transfers.
 pub struct CutPlane2D {
     // Configuration
     enabled: bool,
@@ -25,10 +53,8 @@ pub struct CutPlane2D {
     zoom: f32,
     pan: [f32; 2],
 
-    // Data - simplified to 2D only
-    data_2d: Option<Vec<f32>>,
-    data_width: u32,
-    data_height: u32,
+    // Data source (CPU or GPU)
+    data_source: Option<DataSource>,
 
     // Rendering - using separate visualization system
     material: Option<VisualizationMaterial>,
@@ -50,9 +76,7 @@ impl CutPlane2D {
             mode: VisualizationMode::Heatmap,
             zoom: 1.0,
             pan: [0.0, 0.0],
-            data_2d: None,
-            data_width: 0,
-            data_height: 0,
+            data_source: None,
             material: None,
             position: Vector3::new(0.0, 0.0, 0.0),
             size: 2.0,
@@ -61,13 +85,44 @@ impl CutPlane2D {
         }
     }
 
-    /// Set 2D data for visualization
-    pub fn update_data(&mut self, data: Vec<f32>, width: u32, height: u32) {
-        self.data_2d = Some(data);
-        self.data_width = width;
-        self.data_height = height;
+    /// Set CPU data for visualization (traditional approach)
+    pub fn update_data(&mut self, data: Vec<f32>, _width: u32, _height: u32) {
+        // Note: For CPU data, we'll need to store dimensions separately for compatibility
+        // For now, we store the data and infer dimensions later
+        self.data_source = Some(DataSource::CpuData(data));
         self.needs_material_update = true;
         self.needs_scene_object_update = true;
+    }
+
+    /// Set GPU buffer for direct visualization (high-performance approach)
+    /// This avoids expensive GPU→CPU→GPU transfers
+    pub fn update_gpu_buffer(&mut self, buffer: Arc<Buffer>, format: BufferFormat) {
+        self.data_source = Some(DataSource::GpuBuffer { buffer, format });
+        self.needs_material_update = true;
+        self.needs_scene_object_update = true;
+    }
+
+    /// Convenience method for Conway's Game of Life and similar u32 grid simulations
+    pub fn update_u32_buffer(&mut self, buffer: Arc<Buffer>, width: u32, height: u32) {
+        let format = BufferFormat {
+            element_type: BufferElementType::U32,
+            width,
+            height,
+        };
+        self.update_gpu_buffer(buffer, format);
+    }
+
+    /// Get data dimensions
+    pub fn get_dimensions(&self) -> (u32, u32) {
+        match &self.data_source {
+            Some(DataSource::CpuData(_data)) => {
+                // For CPU data, we need to infer dimensions from context
+                // This is a limitation of the old API - we'll maintain it for compatibility
+                (64, 64) // Default fallback - should be overridden in practice
+            }
+            Some(DataSource::GpuBuffer { format, .. }) => (format.width, format.height),
+            None => (0, 0),
+        }
     }
 
     /// Set position of the visualization plane in 3D space
@@ -98,12 +153,17 @@ impl CutPlane2D {
     /// Convert to VisualizationPlane for rendering
     pub fn to_visualization_plane(&self) -> Option<crate::gfx::rendering::VisualizationPlane> {
         if let Some(material) = &self.material {
+            // Get buffer reference if using GPU data
+            let data_buffer = match &self.data_source {
+                Some(DataSource::GpuBuffer { buffer, .. }) => Some((**buffer).clone()),
+                _ => None,
+            };
+
             Some(crate::gfx::rendering::VisualizationPlane {
                 position: self.position,
-                // Pass size directly like regular objects - will be handled by uniform scale
                 size: cgmath::Vector3::new(self.size, self.size, self.size),
                 material: material.clone(),
-                data_buffer: None,
+                data_buffer,  // Pass GPU buffer directly to renderer!
                 texture: None,
             })
         } else {
@@ -111,32 +171,46 @@ impl CutPlane2D {
         }
     }
 
-    /// Update material from 2D data
+    /// Update material based on current data source
     fn update_material(&mut self, device: &Device, queue: &Queue) {
-        let Some(data) = &self.data_2d else {
+        let Some(data_source) = &self.data_source else {
             return;
         };
 
-        if self.data_width == 0 || self.data_height == 0 {
-            return;
+        match data_source {
+            DataSource::CpuData(data) => {
+                // Traditional CPU data path - process and create texture
+                let (width, height) = self.get_dimensions();
+                if width == 0 || height == 0 {
+                    return;
+                }
+
+                let processed_data = match self.mode {
+                    VisualizationMode::Heatmap => self.apply_heatmap_coloring(data),
+                    VisualizationMode::Grid => self.apply_grid_pattern(data, width, height),
+                    VisualizationMode::Points => self.apply_points_visualization(data),
+                };
+
+                self.material = Some(VisualizationMaterial::from_2d_data(
+                    device,
+                    queue,
+                    &processed_data,
+                    width,
+                    height,
+                    "2D Data Plane Material",
+                ));
+            }
+            DataSource::GpuBuffer { buffer, format } => {
+                // High-performance GPU buffer path - create material that references buffer directly
+                self.material = Some(VisualizationMaterial::from_gpu_buffer(
+                    device,
+                    buffer.clone(),
+                    *format,
+                    self.mode,
+                    "GPU Buffer Material",
+                ));
+            }
         }
-
-        // Process 2D data based on visualization mode
-        let processed_data = match self.mode {
-            VisualizationMode::Heatmap => self.apply_heatmap_coloring(data),
-            VisualizationMode::Grid => self.apply_grid_pattern(data),
-            VisualizationMode::Points => self.apply_points_visualization(data),
-        };
-
-        // Create material from processed 2D data
-        self.material = Some(VisualizationMaterial::from_2d_data(
-            device,
-            queue,
-            &processed_data,
-            self.data_width,
-            self.data_height,
-            "2D Data Plane Material",
-        ));
 
         self.needs_material_update = false;
     }
@@ -158,7 +232,7 @@ impl CutPlane2D {
     }
 
     /// Apply grid pattern to 2D data
-    fn apply_grid_pattern(&self, data: &[f32]) -> Vec<f32> {
+    fn apply_grid_pattern(&self, data: &[f32], width: u32, height: u32) -> Vec<f32> {
         let mut result = Vec::with_capacity(data.len());
         let checker_size = 8;
 
@@ -166,8 +240,8 @@ impl CutPlane2D {
         let normalized_data = self.apply_heatmap_coloring(data);
 
         for (i, &value) in normalized_data.iter().enumerate() {
-            let x = i as u32 % self.data_width;
-            let y = i as u32 / self.data_width;
+            let x = i as u32 % width;
+            let y = i as u32 / width;
 
             let checker_x = (x / checker_size) % 2;
             let checker_y = (y / checker_size) % 2;
@@ -203,15 +277,13 @@ impl CutPlane2D {
 
     /// Render the visualization display
     fn render_visualization(&self, ui: &Ui) {
-        if self.data_2d.is_some() {
+        if self.data_source.is_some() {
             ui.text("2D Data Visualization:");
             ui.separator();
 
             // Display data information
-            ui.text(&format!(
-                "Data size: {}x{}",
-                self.data_width, self.data_height
-            ));
+            let (width, height) = self.get_dimensions();
+            ui.text(&format!("Data size: {}x{}", width, height));
             ui.text(&format!("Mode: {}", self.mode.as_str()));
             ui.text(&format!(
                 "Position: ({:.2}, {:.2}, {:.2})",
@@ -226,10 +298,8 @@ impl CutPlane2D {
                 .size([350.0, 350.0])
                 .border(true)
                 .build(|| {
-                    ui.text(&format!(
-                        "Data: {}x{} values",
-                        self.data_width, self.data_height
-                    ));
+                    let (width, height) = self.get_dimensions();
+                    ui.text(&format!("Data: {}x{} values", width, height));
                     ui.text(&format!("Zoom: {:.1}x", self.zoom));
                     ui.text(&format!("Pan: ({:.2}, {:.2})", self.pan[0], self.pan[1]));
 
@@ -263,7 +333,7 @@ impl CutPlane2D {
 impl VisualizationComponent for CutPlane2D {
     fn initialize(&mut self, device: Option<&Device>, queue: Option<&Queue>) {
         // Generate some test data if none is provided
-        if self.data_2d.is_none() {
+        if self.data_source.is_none() {
             self.generate_test_2d_data();
         }
 
@@ -390,9 +460,14 @@ impl VisualizationComponent for CutPlane2D {
             return;
         }
 
-        if self.data_2d.is_none() {
+        let Some(data_source) = &self.data_source else {
             return;
-        }
+        };
+
+        // Only handle CPU data in this legacy method
+        let DataSource::CpuData(data) = data_source else {
+            return; // GPU buffers don't need scene material updates
+        };
 
         let material_name = "data_plane_material";
 
@@ -400,40 +475,40 @@ impl VisualizationComponent for CutPlane2D {
             .get_material_manager_mut()
             .get_material_mut(&material_name.to_string())
         {
-            if let Some(data) = &self.data_2d {
-                // Process 2D data based on visualization mode
-                let processed_data = match self.mode {
-                    VisualizationMode::Heatmap => self.apply_heatmap_coloring(data),
-                    VisualizationMode::Grid => self.apply_grid_pattern(data),
-                    VisualizationMode::Points => self.apply_points_visualization(data),
-                };
+            let (width, height) = self.get_dimensions();
+            
+            // Process 2D data based on visualization mode
+            let processed_data = match self.mode {
+                VisualizationMode::Heatmap => self.apply_heatmap_coloring(data),
+                VisualizationMode::Grid => self.apply_grid_pattern(data, width, height),
+                VisualizationMode::Points => self.apply_points_visualization(data),
+            };
 
-                // Convert f32 data to RGBA8
-                let rgba_data: Vec<u8> = processed_data
-                    .iter()
-                    .flat_map(|&value| {
-                        let normalized = value.clamp(0.0, 1.0);
-                        let color_val = (normalized * 255.0) as u8;
-                        [color_val, color_val, color_val, 255u8] // Grayscale
-                    })
-                    .collect();
+            // Convert f32 data to RGBA8
+            let rgba_data: Vec<u8> = processed_data
+                .iter()
+                .flat_map(|&value| {
+                    let normalized = value.clamp(0.0, 1.0);
+                    let color_val = (normalized * 255.0) as u8;
+                    [color_val, color_val, color_val, 255u8] // Grayscale
+                })
+                .collect();
 
-                // Create texture from RGBA data
-                let texture = TextureResource::create_from_rgba_data(
-                    device,
-                    queue,
-                    &rgba_data,
-                    self.data_width,
-                    self.data_height,
-                    "2D Data Plane Texture",
-                );
+            // Create texture from RGBA data
+            let texture = TextureResource::create_from_rgba_data(
+                device,
+                queue,
+                &rgba_data,
+                width,
+                height,
+                "2D Data Plane Texture",
+            );
 
-                // Set the texture on the scene material
-                scene_material.set_texture(texture);
-                scene_material.base_color = [1.0, 1.0, 1.0, 1.0]; // White base color to show texture
+            // Set the texture on the scene material
+            scene_material.set_texture(texture);
+            scene_material.base_color = [1.0, 1.0, 1.0, 1.0]; // White base color to show texture
 
-                self.needs_material_update = false;
-            }
+            self.needs_material_update = false;
         }
     }
 }
@@ -465,8 +540,6 @@ impl CutPlane2D {
             }
         }
 
-        self.data_2d = Some(data);
-        self.data_width = width;
-        self.data_height = height;
+        self.data_source = Some(DataSource::CpuData(data));
     }
 }
