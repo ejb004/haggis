@@ -5,8 +5,8 @@
 
 use crate::gfx::scene::Scene;
 use imgui::Ui;
-use wgpu::{Device, Queue};
 use std::any::Any;
+use wgpu::{Device, Queue};
 
 /// Core trait for user-defined simulations in the Haggis engine.
 ///

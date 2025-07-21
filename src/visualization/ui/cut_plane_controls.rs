@@ -6,21 +6,25 @@ use imgui::Ui;
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PlaneOrientation {
     XY, // Looking down Z axis
-    XZ, // Looking down Y axis  
+    XZ, // Looking down Y axis
     YZ, // Looking down X axis
 }
 
 impl PlaneOrientation {
     /// Get all available orientations
     pub fn all() -> [PlaneOrientation; 3] {
-        [PlaneOrientation::XY, PlaneOrientation::XZ, PlaneOrientation::YZ]
+        [
+            PlaneOrientation::XY,
+            PlaneOrientation::XZ,
+            PlaneOrientation::YZ,
+        ]
     }
 
     /// Get the string representation
     pub fn as_str(&self) -> &'static str {
         match self {
             PlaneOrientation::XY => "XY",
-            PlaneOrientation::XZ => "XZ", 
+            PlaneOrientation::XZ => "XZ",
             PlaneOrientation::YZ => "YZ",
         }
     }
@@ -46,7 +50,11 @@ pub enum VisualizationMode {
 impl VisualizationMode {
     /// Get all available modes
     pub fn all() -> [VisualizationMode; 3] {
-        [VisualizationMode::Grid, VisualizationMode::Points, VisualizationMode::Heatmap]
+        [
+            VisualizationMode::Grid,
+            VisualizationMode::Points,
+            VisualizationMode::Heatmap,
+        ]
     }
 
     /// Get the string representation
@@ -132,7 +140,7 @@ pub fn render_cut_plane_controls(
 
     // View controls
     ui.text("View Controls:");
-    
+
     // Zoom control
     ui.text("Zoom:");
     if ui.slider("##zoom", 0.1, 5.0, zoom) {
@@ -142,20 +150,20 @@ pub fn render_cut_plane_controls(
     // Pan controls
     ui.text("Pan:");
     ui.columns(2, "pan_columns", false);
-    
+
     ui.text("X:");
     ui.next_column();
     if ui.slider("##pan_x", -2.0, 2.0, &mut pan[0]) {
         modified = true;
     }
     ui.next_column();
-    
+
     ui.text("Y:");
     ui.next_column();
     if ui.slider("##pan_y", -2.0, 2.0, &mut pan[1]) {
         modified = true;
     }
-    
+
     ui.columns(1, "", false);
 
     ui.spacing();

@@ -21,17 +21,16 @@
 //! This layer is intended for advanced users implementing custom compute shaders,
 //! complex simulation algorithms, or performance-critical applications.
 
-use wgpu::{
-    Buffer, BufferDescriptor, BufferUsages, CommandEncoder, ComputePassDescriptor,
-    ComputePipeline, ComputePipelineDescriptor, Device, Queue, ShaderModule,
-    ShaderModuleDescriptor, ShaderSource, BindGroup, BindGroupDescriptor,
-    BindGroupLayout, BindGroupLayoutDescriptor, BindGroupLayoutEntry,
-    BindingType, BufferBindingType, ShaderStages,
-};
-use wgpu::util::DeviceExt;
+use bytemuck::{Pod, Zeroable};
 use std::collections::HashMap;
 use std::sync::Arc;
-use bytemuck::{Pod, Zeroable};
+use wgpu::util::DeviceExt;
+use wgpu::{
+    BindGroup, BindGroupDescriptor, BindGroupLayout, BindGroupLayoutDescriptor,
+    BindGroupLayoutEntry, BindingType, Buffer, BufferBindingType, BufferDescriptor, BufferUsages,
+    CommandEncoder, ComputePassDescriptor, ComputePipeline, ComputePipelineDescriptor, Device,
+    Queue, ShaderModule, ShaderModuleDescriptor, ShaderSource, ShaderStages,
+};
 
 /// Low-level GPU compute context for simulations
 pub struct ComputeContext {
@@ -71,26 +70,39 @@ impl ComputeContext {
     }
 
     /// Creates a compute buffer
-    pub fn create_buffer<T: Pod>(&mut self, name: &str, data: &[T], usage: BufferUsages) -> Result<(), String> {
-        let buffer = self.device.as_ref().create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some(name),
-            contents: bytemuck::cast_slice(data),
-            usage,
-        });
-        
+    pub fn create_buffer<T: Pod>(
+        &mut self,
+        name: &str,
+        data: &[T],
+        usage: BufferUsages,
+    ) -> Result<(), String> {
+        let buffer = self
+            .device
+            .as_ref()
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some(name),
+                contents: bytemuck::cast_slice(data),
+                usage,
+            });
+
         self.buffers.insert(name.to_string(), Arc::new(buffer));
         Ok(())
     }
 
     /// Creates an empty buffer with specified size
-    pub fn create_empty_buffer(&mut self, name: &str, size: u64, usage: BufferUsages) -> Result<(), String> {
+    pub fn create_empty_buffer(
+        &mut self,
+        name: &str,
+        size: u64,
+        usage: BufferUsages,
+    ) -> Result<(), String> {
         let buffer = self.device.create_buffer(&BufferDescriptor {
             label: Some(name),
             size,
             usage,
             mapped_at_creation: false,
         });
-        
+
         self.buffers.insert(name.to_string(), Arc::new(buffer));
         Ok(())
     }
@@ -103,7 +115,8 @@ impl ComputeContext {
     /// Updates a buffer with new data
     pub fn update_buffer<T: Pod>(&self, name: &str, data: &[T]) -> Result<(), String> {
         let buffer = self.buffers.get(name).ok_or("Buffer not found")?;
-        self.queue.write_buffer(buffer, 0, bytemuck::cast_slice(data));
+        self.queue
+            .write_buffer(buffer, 0, bytemuck::cast_slice(data));
         Ok(())
     }
 
@@ -117,16 +130,24 @@ impl ComputeContext {
     }
 
     /// Creates a compute pipeline
-    pub fn create_compute_pipeline(&mut self, name: &str, shader: &ShaderModule, entry_point: &str) -> Result<(), String> {
-        let pipeline = self.device.as_ref().create_compute_pipeline(&ComputePipelineDescriptor {
-            label: Some(name),
-            layout: None,
-            module: shader,
-            entry_point: Some(entry_point),
-            cache: None,
-            compilation_options: Default::default(),
-        });
-        
+    pub fn create_compute_pipeline(
+        &mut self,
+        name: &str,
+        shader: &ShaderModule,
+        entry_point: &str,
+    ) -> Result<(), String> {
+        let pipeline = self
+            .device
+            .as_ref()
+            .create_compute_pipeline(&ComputePipelineDescriptor {
+                label: Some(name),
+                layout: None,
+                module: shader,
+                entry_point: Some(entry_point),
+                cache: None,
+                compilation_options: Default::default(),
+            });
+
         self.pipelines.insert(name.to_string(), Arc::new(pipeline));
         Ok(())
     }
@@ -137,27 +158,39 @@ impl ComputeContext {
     }
 
     /// Creates a bind group layout
-    pub fn create_bind_group_layout(&mut self, name: &str, entries: &[BindGroupLayoutEntry]) -> Result<(), String> {
-        let layout = self.device.create_bind_group_layout(&BindGroupLayoutDescriptor {
-            label: Some(name),
-            entries,
-        });
-        
+    pub fn create_bind_group_layout(
+        &mut self,
+        name: &str,
+        entries: &[BindGroupLayoutEntry],
+    ) -> Result<(), String> {
+        let layout = self
+            .device
+            .create_bind_group_layout(&BindGroupLayoutDescriptor {
+                label: Some(name),
+                entries,
+            });
+
         self.layouts.insert(name.to_string(), Arc::new(layout));
         Ok(())
     }
 
     /// Creates a bind group
-    pub fn create_bind_group(&mut self, name: &str, layout_name: &str, entries: &[wgpu::BindGroupEntry]) -> Result<(), String> {
+    pub fn create_bind_group(
+        &mut self,
+        name: &str,
+        layout_name: &str,
+        entries: &[wgpu::BindGroupEntry],
+    ) -> Result<(), String> {
         let layout = self.layouts.get(layout_name).ok_or("Layout not found")?;
-        
+
         let bind_group = self.device.create_bind_group(&BindGroupDescriptor {
             label: Some(name),
             layout,
             entries,
         });
-        
-        self.bind_groups.insert(name.to_string(), Arc::new(bind_group));
+
+        self.bind_groups
+            .insert(name.to_string(), Arc::new(bind_group));
         Ok(())
     }
 
@@ -169,34 +202,51 @@ impl ComputeContext {
     /// Begins a compute pass
     pub fn begin_compute_pass(&mut self, label: &str) -> Result<(), String> {
         if self.command_encoder.is_none() {
-            self.command_encoder = Some(self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some(&format!("{}_encoder", label)),
-            }));
+            self.command_encoder = Some(self.device.create_command_encoder(
+                &wgpu::CommandEncoderDescriptor {
+                    label: Some(&format!("{}_encoder", label)),
+                },
+            ));
         }
-        
+
         // Note: We can't easily store the compute pass due to lifetime issues
         // Users will need to manage the pass themselves in their dispatch calls
         Ok(())
     }
 
     /// Dispatches a compute shader
-    pub fn dispatch(&mut self, pipeline_name: &str, bind_group_name: &str, workgroup_count: (u32, u32, u32)) -> Result<(), String> {
-        let pipeline = self.pipelines.get(pipeline_name).ok_or("Pipeline not found")?;
-        let bind_group = self.bind_groups.get(bind_group_name).ok_or("Bind group not found")?;
-        
+    pub fn dispatch(
+        &mut self,
+        pipeline_name: &str,
+        bind_group_name: &str,
+        workgroup_count: (u32, u32, u32),
+    ) -> Result<(), String> {
+        let pipeline = self
+            .pipelines
+            .get(pipeline_name)
+            .ok_or("Pipeline not found")?;
+        let bind_group = self
+            .bind_groups
+            .get(bind_group_name)
+            .ok_or("Bind group not found")?;
+
         if let Some(encoder) = &mut self.command_encoder {
             let mut compute_pass = encoder.begin_compute_pass(&ComputePassDescriptor {
                 label: Some(&format!("{}_pass", pipeline_name)),
                 timestamp_writes: None,
             });
-            
+
             compute_pass.set_pipeline(pipeline);
             compute_pass.set_bind_group(0, Some(bind_group.as_ref()), &[]);
-            compute_pass.dispatch_workgroups(workgroup_count.0, workgroup_count.1, workgroup_count.2);
+            compute_pass.dispatch_workgroups(
+                workgroup_count.0,
+                workgroup_count.1,
+                workgroup_count.2,
+            );
         } else {
             return Err("No active command encoder".to_string());
         }
-        
+
         Ok(())
     }
 
@@ -209,9 +259,13 @@ impl ComputeContext {
     }
 
     /// Reads data back from a buffer (blocking operation)
-    pub fn read_buffer<T: Pod + Clone>(&self, buffer_name: &str, size: usize) -> Result<Vec<T>, String> {
+    pub fn read_buffer<T: Pod + Clone>(
+        &self,
+        buffer_name: &str,
+        size: usize,
+    ) -> Result<Vec<T>, String> {
         let buffer = self.buffers.get(buffer_name).ok_or("Buffer not found")?;
-        
+
         // Create a staging buffer
         let staging_buffer = self.device.create_buffer(&BufferDescriptor {
             label: Some("staging_buffer"),
@@ -219,12 +273,14 @@ impl ComputeContext {
             usage: BufferUsages::COPY_DST | BufferUsages::MAP_READ,
             mapped_at_creation: false,
         });
-        
+
         // Copy data to staging buffer
-        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("copy_encoder"),
-        });
-        
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("copy_encoder"),
+            });
+
         encoder.copy_buffer_to_buffer(
             buffer,
             0,
@@ -232,18 +288,18 @@ impl ComputeContext {
             0,
             (size * std::mem::size_of::<T>()) as u64,
         );
-        
+
         self.queue.submit(std::iter::once(encoder.finish()));
-        
+
         // Map and read the buffer
         let slice = staging_buffer.slice(..);
         let (tx, rx) = futures::channel::oneshot::channel();
         slice.map_async(wgpu::MapMode::Read, move |result| {
             tx.send(result).unwrap();
         });
-        
+
         let _ = self.device.poll(wgpu::MaintainBase::Wait);
-        
+
         match futures::executor::block_on(rx) {
             Ok(Ok(())) => {
                 let mapped = slice.get_mapped_range();
@@ -361,11 +417,14 @@ impl RawGpuSimulation {
     /// Initializes GPU resources with custom shader
     pub fn initialize_with_shader(&mut self, shader_source: &str) -> Result<(), String> {
         // Create shader module
-        let shader = self.context.create_shader_module("particle_shader", shader_source)?;
-        
+        let shader = self
+            .context
+            .create_shader_module("particle_shader", shader_source)?;
+
         // Create compute pipeline
-        self.context.create_compute_pipeline("particle_pipeline", &shader, "main")?;
-        
+        self.context
+            .create_compute_pipeline("particle_pipeline", &shader, "main")?;
+
         // Create bind group layout
         let layout_entries = vec![
             BindGroupLayoutEntry {
@@ -409,9 +468,10 @@ impl RawGpuSimulation {
                 count: None,
             },
         ];
-        
-        self.context.create_bind_group_layout("simulation_layout", &layout_entries)?;
-        
+
+        self.context
+            .create_bind_group_layout("simulation_layout", &layout_entries)?;
+
         self.initialized = true;
         Ok(())
     }
@@ -420,11 +480,15 @@ impl RawGpuSimulation {
     pub fn set_particles(&mut self, particles: Vec<GpuParticle>) -> Result<(), String> {
         self.particles = particles;
         self.params.particle_count = self.particles.len() as u32;
-        
+
         if self.initialized {
-            self.context.create_buffer("particles", &self.particles, BufferUsages::STORAGE | BufferUsages::COPY_DST)?;
+            self.context.create_buffer(
+                "particles",
+                &self.particles,
+                BufferUsages::STORAGE | BufferUsages::COPY_DST,
+            )?;
         }
-        
+
         Ok(())
     }
 
@@ -432,11 +496,15 @@ impl RawGpuSimulation {
     pub fn set_forces(&mut self, forces: Vec<GpuForce>) -> Result<(), String> {
         self.forces = forces;
         self.params.force_count = self.forces.len() as u32;
-        
+
         if self.initialized {
-            self.context.create_buffer("forces", &self.forces, BufferUsages::STORAGE | BufferUsages::COPY_DST)?;
+            self.context.create_buffer(
+                "forces",
+                &self.forces,
+                BufferUsages::STORAGE | BufferUsages::COPY_DST,
+            )?;
         }
-        
+
         Ok(())
     }
 
@@ -444,22 +512,30 @@ impl RawGpuSimulation {
     pub fn set_constraints(&mut self, constraints: Vec<GpuConstraint>) -> Result<(), String> {
         self.constraints = constraints;
         self.params.constraint_count = self.constraints.len() as u32;
-        
+
         if self.initialized {
-            self.context.create_buffer("constraints", &self.constraints, BufferUsages::STORAGE | BufferUsages::COPY_DST)?;
+            self.context.create_buffer(
+                "constraints",
+                &self.constraints,
+                BufferUsages::STORAGE | BufferUsages::COPY_DST,
+            )?;
         }
-        
+
         Ok(())
     }
 
     /// Updates simulation parameters
     pub fn update_params(&mut self, delta_time: f32) -> Result<(), String> {
         self.params.delta_time = delta_time;
-        
+
         if self.initialized {
-            self.context.create_buffer("params", &[self.params], BufferUsages::UNIFORM | BufferUsages::COPY_DST)?;
+            self.context.create_buffer(
+                "params",
+                &[self.params],
+                BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+            )?;
         }
-        
+
         Ok(())
     }
 
@@ -474,7 +550,8 @@ impl RawGpuSimulation {
     /// Dispatches the simulation compute shader
     pub fn dispatch_simulation(&mut self, workgroup_size: (u32, u32, u32)) -> Result<(), String> {
         self.context.begin_compute_pass("particle_simulation")?;
-        self.context.dispatch("particle_pipeline", "simulation_bind_group", workgroup_size)?;
+        self.context
+            .dispatch("particle_pipeline", "simulation_bind_group", workgroup_size)?;
         self.context.submit()?;
         Ok(())
     }
@@ -649,7 +726,10 @@ impl BufferPool {
     pub fn deallocate(&mut self, name: &str) {
         if let Some(buffer) = self.used_buffers.remove(name) {
             let size = buffer.size();
-            self.free_buffers.entry(size).or_insert_with(Vec::new).push(buffer);
+            self.free_buffers
+                .entry(size)
+                .or_insert_with(Vec::new)
+                .push(buffer);
         }
     }
 
@@ -689,13 +769,21 @@ impl GpuProfiler {
     }
 
     /// Begins profiling a section
-    pub fn begin_section(&mut self, _encoder: &mut CommandEncoder, _name: &str) -> Result<(), String> {
+    pub fn begin_section(
+        &mut self,
+        _encoder: &mut CommandEncoder,
+        _name: &str,
+    ) -> Result<(), String> {
         // Implementation would write timestamp queries
         Ok(())
     }
 
     /// Ends profiling a section
-    pub fn end_section(&mut self, _encoder: &mut CommandEncoder, _name: &str) -> Result<(), String> {
+    pub fn end_section(
+        &mut self,
+        _encoder: &mut CommandEncoder,
+        _name: &str,
+    ) -> Result<(), String> {
         // Implementation would write timestamp queries
         Ok(())
     }

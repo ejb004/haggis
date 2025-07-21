@@ -21,8 +21,8 @@ use haggis::gfx::scene::Scene;
 use haggis::simulation::traits::Simulation;
 use haggis::ui::default_transform_panel;
 use imgui::Ui;
-use std::time::Instant;
 use std::collections::VecDeque;
+use std::time::Instant;
 
 /// Simple particle representation (same as CPU version for comparison)
 #[derive(Clone)]
@@ -56,21 +56,27 @@ impl PerformanceMetrics {
         }
     }
 
-    fn record_frame(&mut self, frame_time: f32, update_time: f32, gpu_time: f32, particle_count: usize) {
+    fn record_frame(
+        &mut self,
+        frame_time: f32,
+        update_time: f32,
+        gpu_time: f32,
+        particle_count: usize,
+    ) {
         const MAX_SAMPLES: usize = 120; // 2 seconds at 60 FPS
-        
+
         self.frame_times.push_back(frame_time);
         self.update_times.push_back(update_time);
         self.gpu_dispatch_times.push_back(gpu_time);
         self.last_update_time = update_time;
         self.last_gpu_time = gpu_time;
-        
+
         if self.frame_times.len() > MAX_SAMPLES {
             self.frame_times.pop_front();
             self.update_times.pop_front();
             self.gpu_dispatch_times.pop_front();
         }
-        
+
         // Calculate particles per second
         self.particles_per_second = if frame_time > 0.0 {
             (particle_count as f32) / frame_time
@@ -83,8 +89,13 @@ impl PerformanceMetrics {
         if self.frame_times.is_empty() {
             0.0
         } else {
-            let avg_frame_time = self.frame_times.iter().sum::<f32>() / self.frame_times.len() as f32;
-            if avg_frame_time > 0.0 { 1.0 / avg_frame_time } else { 0.0 }
+            let avg_frame_time =
+                self.frame_times.iter().sum::<f32>() / self.frame_times.len() as f32;
+            if avg_frame_time > 0.0 {
+                1.0 / avg_frame_time
+            } else {
+                0.0
+            }
         }
     }
 
@@ -100,7 +111,8 @@ impl PerformanceMetrics {
         if self.gpu_dispatch_times.is_empty() {
             0.0
         } else {
-            (self.gpu_dispatch_times.iter().sum::<f32>() / self.gpu_dispatch_times.len() as f32) * 1000.0
+            (self.gpu_dispatch_times.iter().sum::<f32>() / self.gpu_dispatch_times.len() as f32)
+                * 1000.0
         }
     }
 }
@@ -109,7 +121,7 @@ impl PerformanceMetrics {
 /// Note: This is a conceptual implementation - actual GPU compute would require integration
 /// with the haggis rendering system's GPU context and compute shaders
 struct SimpleParticleSystemGPU {
-    particles: Vec<Particle>,  // CPU copy for synchronization
+    particles: Vec<Particle>, // CPU copy for synchronization
     gravity: Vector3<f32>,
     damping: f32,
     ground_level: f32,
@@ -119,7 +131,7 @@ struct SimpleParticleSystemGPU {
     spawn_rate: f32,
     last_spawn: f32,
     metrics: PerformanceMetrics,
-    
+
     // GPU simulation state (conceptual)
     gpu_initialized: bool,
     workgroup_size: u32,
@@ -170,7 +182,7 @@ impl SimpleParticleSystemGPU {
                 active: false,
             });
         }
-        
+
         // Set the particle data
         self.particles[index] = Particle {
             position,
@@ -183,23 +195,24 @@ impl SimpleParticleSystemGPU {
     /// Simulate GPU compute shader execution
     fn gpu_update_particles(&mut self, delta_time: f32) -> f32 {
         let gpu_start = Instant::now();
-        
+
         // Simulate GPU compute shader work
         // In a real implementation, this would:
         // 1. Upload parameters to GPU uniform buffer
         // 2. Dispatch compute shader with workgroups
         // 3. Download results from GPU buffer
-        
+
         // For simulation purposes, we'll do the same physics as CPU but with timing
         // that represents GPU characteristics (lower per-particle overhead, setup cost)
-        
+
         let setup_time = 0.0001; // Simulate GPU setup overhead
         std::thread::sleep(std::time::Duration::from_secs_f32(setup_time));
-        
+
         // Simulate parallel GPU execution (much faster than CPU for large datasets)
-        let workgroups = (self.particles.len() + self.workgroup_size as usize - 1) / self.workgroup_size as usize;
+        let workgroups = (self.particles.len() + self.workgroup_size as usize - 1)
+            / self.workgroup_size as usize;
         let _gpu_execution_time = workgroups as f32 * 0.00001; // Very fast parallel execution
-        
+
         // Update particles (same physics as CPU version for functional equivalence)
         for particle in &mut self.particles {
             if !particle.active {
@@ -235,11 +248,11 @@ impl SimpleParticleSystemGPU {
                 particle.active = false;
             }
         }
-        
+
         // Simulate download time
         let download_time = 0.00005;
         std::thread::sleep(std::time::Duration::from_secs_f32(download_time));
-        
+
         gpu_start.elapsed().as_secs_f32()
     }
 
@@ -264,7 +277,7 @@ impl SimpleParticleSystemGPU {
                 if object.name == "ground_plane" {
                     continue;
                 }
-                
+
                 if particle.active {
                     object.ui_transform.position = [
                         particle.position.x,
@@ -279,9 +292,13 @@ impl SimpleParticleSystemGPU {
                 }
             }
         }
-        
+
         // Ensure ground plane stays in place and visible
-        if let Some(ground) = scene.objects.iter_mut().find(|obj| obj.name == "ground_plane") {
+        if let Some(ground) = scene
+            .objects
+            .iter_mut()
+            .find(|obj| obj.name == "ground_plane")
+        {
             ground.ui_transform.position = [0.0, 0.0, 0.0];
             ground.apply_ui_transform();
             ground.visible = true;
@@ -291,10 +308,17 @@ impl SimpleParticleSystemGPU {
     fn initialize_gpu_resources(&mut self) {
         // Simulate GPU resource initialization
         println!("Initializing GPU compute buffers...");
-        println!("  Particle buffer: {} bytes", self.particles.len() * std::mem::size_of::<Particle>());
+        println!(
+            "  Particle buffer: {} bytes",
+            self.particles.len() * std::mem::size_of::<Particle>()
+        );
         println!("  Workgroup size: {}", self.workgroup_size);
-        println!("  Workgroups: {}", (self.particles.len() + self.workgroup_size as usize - 1) / self.workgroup_size as usize);
-        
+        println!(
+            "  Workgroups: {}",
+            (self.particles.len() + self.workgroup_size as usize - 1)
+                / self.workgroup_size as usize
+        );
+
         self.particle_buffer_size = self.particles.len() * std::mem::size_of::<Particle>();
         self.gpu_initialized = true;
     }
@@ -343,7 +367,8 @@ impl Simulation for SimpleParticleSystemGPU {
         // Record performance metrics
         let update_time = update_start.elapsed().as_secs_f32();
         let active_count = self.particles.iter().filter(|p| p.active).count();
-        self.metrics.record_frame(delta_time, update_time, gpu_time, active_count);
+        self.metrics
+            .record_frame(delta_time, update_time, gpu_time, active_count);
     }
 
     fn render_ui(&mut self, ui: &Ui) {
@@ -367,14 +392,23 @@ impl Simulation for SimpleParticleSystemGPU {
                     self.particles.iter().filter(|p| p.active).count()
                 ));
                 ui.text(&format!("Time: {:.2}s", self.time));
-                
+
                 // Performance metrics
                 ui.spacing();
                 ui.text("GPU Performance:");
                 ui.text(&format!("  FPS: {:.1}", self.metrics.get_avg_fps()));
-                ui.text(&format!("  Update Time: {:.2}ms", self.metrics.get_avg_update_time_ms()));
-                ui.text(&format!("  GPU Compute: {:.3}ms", self.metrics.get_avg_gpu_time_ms()));
-                ui.text(&format!("  Particles/sec: {:.0}", self.metrics.particles_per_second));
+                ui.text(&format!(
+                    "  Update Time: {:.2}ms",
+                    self.metrics.get_avg_update_time_ms()
+                ));
+                ui.text(&format!(
+                    "  GPU Compute: {:.3}ms",
+                    self.metrics.get_avg_gpu_time_ms()
+                ));
+                ui.text(&format!(
+                    "  Particles/sec: {:.0}",
+                    self.metrics.particles_per_second
+                ));
                 ui.spacing();
 
                 // Physics controls
@@ -417,14 +451,17 @@ impl Simulation for SimpleParticleSystemGPU {
             .build(|| {
                 ui.text("GPU Compute Architecture:");
                 ui.separator();
-                
+
                 ui.text(&format!("Workgroup Size: {}", self.workgroup_size));
                 ui.text(&format!("Buffer Size: {} bytes", self.particle_buffer_size));
-                ui.text(&format!("Workgroups: {}", 
-                    (self.particles.len() + self.workgroup_size as usize - 1) / self.workgroup_size as usize));
+                ui.text(&format!(
+                    "Workgroups: {}",
+                    (self.particles.len() + self.workgroup_size as usize - 1)
+                        / self.workgroup_size as usize
+                ));
                 ui.text(&format!("GPU Initialized: {}", self.gpu_initialized));
                 ui.spacing();
-                
+
                 ui.text("Performance Characteristics:");
                 ui.text("• Low per-particle overhead");
                 ui.text("• Setup/dispatch costs");
@@ -432,7 +469,7 @@ impl Simulation for SimpleParticleSystemGPU {
                 ui.text("• Parallel execution");
                 ui.text("• Scales well with particle count");
                 ui.spacing();
-                
+
                 ui.text("Note: This demonstrates conceptual");
                 ui.text("GPU compute architecture for");
                 ui.text("educational CPU vs GPU comparison.");
@@ -475,7 +512,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .app_state
         .scene
         .add_material_rgb("particle_green", 0.2, 1.0, 0.4, 0.8, 0.3);
-    
+
     haggis
         .app_state
         .scene

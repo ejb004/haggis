@@ -2,10 +2,10 @@
 //!
 //! Dedicated rendering system for visualization components, independent of scene objects.
 
-use wgpu::*;
-use wgpu::util::DeviceExt;
-use cgmath::{Matrix4, Vector3};
 use super::materials::VisualizationMaterial;
+use cgmath::{Matrix4, Vector3};
+use wgpu::util::DeviceExt;
+use wgpu::*;
 
 /// Vertex data for visualization quads
 #[repr(C)]
@@ -55,13 +55,9 @@ pub struct VisualizationItem {
 
 impl VisualizationItem {
     /// Create a quad for 2D visualization
-    pub fn create_quad(
-        position: Vector3<f32>,
-        size: f32,
-        material: VisualizationMaterial,
-    ) -> Self {
+    pub fn create_quad(position: Vector3<f32>, size: f32, material: VisualizationMaterial) -> Self {
         let half_size = size * 0.5;
-        
+
         let vertices = vec![
             VisualizationVertex {
                 position: [position.x - half_size, position.y - half_size, position.z],
@@ -120,19 +116,20 @@ impl VisualizationRenderer {
         });
 
         // Create camera bind group layout
-        let camera_bind_group_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
-            label: Some("Visualization Camera Bind Group Layout"),
-            entries: &[BindGroupLayoutEntry {
-                binding: 0,
-                visibility: ShaderStages::VERTEX,
-                ty: BindingType::Buffer {
-                    ty: BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-                count: None,
-            }],
-        });
+        let camera_bind_group_layout =
+            device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+                label: Some("Visualization Camera Bind Group Layout"),
+                entries: &[BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: ShaderStages::VERTEX,
+                    ty: BindingType::Buffer {
+                        ty: BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+            });
 
         // Create camera bind group
         let camera_bind_group = device.create_bind_group(&BindGroupDescriptor {
@@ -145,27 +142,28 @@ impl VisualizationRenderer {
         });
 
         // Create material bind group layout
-        let material_bind_group_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
-            label: Some("Visualization Material Bind Group Layout"),
-            entries: &[
-                BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: ShaderStages::FRAGMENT,
-                    ty: BindingType::Texture {
-                        multisampled: false,
-                        view_dimension: TextureViewDimension::D2,
-                        sample_type: TextureSampleType::Float { filterable: true },
+        let material_bind_group_layout =
+            device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+                label: Some("Visualization Material Bind Group Layout"),
+                entries: &[
+                    BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: ShaderStages::FRAGMENT,
+                        ty: BindingType::Texture {
+                            multisampled: false,
+                            view_dimension: TextureViewDimension::D2,
+                            sample_type: TextureSampleType::Float { filterable: true },
+                        },
+                        count: None,
                     },
-                    count: None,
-                },
-                BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: ShaderStages::FRAGMENT,
-                    ty: BindingType::Sampler(SamplerBindingType::Filtering),
-                    count: None,
-                },
-            ],
-        });
+                    BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: ShaderStages::FRAGMENT,
+                        ty: BindingType::Sampler(SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                ],
+            });
 
         // Create render pipeline layout
         let render_pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
@@ -235,7 +233,11 @@ impl VisualizationRenderer {
         let camera_uniform = VisualizationCameraUniform {
             view_proj: view_proj_matrix.into(),
         };
-        queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(&[camera_uniform]));
+        queue.write_buffer(
+            &self.camera_buffer,
+            0,
+            bytemuck::cast_slice(&[camera_uniform]),
+        );
     }
 
     /// Update vertex and index buffers with visualization items
@@ -254,19 +256,23 @@ impl VisualizationRenderer {
 
         if !all_vertices.is_empty() {
             // Create vertex buffer
-            self.vertex_buffer = Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Visualization Vertex Buffer"),
-                contents: bytemuck::cast_slice(&all_vertices),
-                usage: BufferUsages::VERTEX,
-            }));
+            self.vertex_buffer = Some(device.create_buffer_init(
+                &wgpu::util::BufferInitDescriptor {
+                    label: Some("Visualization Vertex Buffer"),
+                    contents: bytemuck::cast_slice(&all_vertices),
+                    usage: BufferUsages::VERTEX,
+                },
+            ));
             self.vertex_count = all_vertices.len() as u32;
 
             // Create index buffer
-            self.index_buffer = Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Visualization Index Buffer"),
-                contents: bytemuck::cast_slice(&all_indices),
-                usage: BufferUsages::INDEX,
-            }));
+            self.index_buffer = Some(device.create_buffer_init(
+                &wgpu::util::BufferInitDescriptor {
+                    label: Some("Visualization Index Buffer"),
+                    contents: bytemuck::cast_slice(&all_indices),
+                    usage: BufferUsages::INDEX,
+                },
+            ));
             self.index_count = all_indices.len() as u32;
         }
     }
@@ -307,8 +313,9 @@ impl VisualizationRenderer {
 
         render_pass.set_pipeline(&self.render_pipeline);
         render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
-        
-        if let (Some(vertex_buffer), Some(index_buffer)) = (&self.vertex_buffer, &self.index_buffer) {
+
+        if let (Some(vertex_buffer), Some(index_buffer)) = (&self.vertex_buffer, &self.index_buffer)
+        {
             render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
             render_pass.set_index_buffer(index_buffer.slice(..), IndexFormat::Uint16);
 

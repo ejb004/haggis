@@ -16,7 +16,7 @@ use crate::gfx::{
 };
 
 use super::pipeline_manager::{PipelineConfig, PipelineManager};
-use super::visualization_renderer::{VisualizationRenderer, VisualizationPlane};
+use super::visualization_renderer::{VisualizationPlane, VisualizationRenderer};
 
 /// Core rendering engine managing GPU resources and draw calls
 ///
@@ -293,7 +293,8 @@ impl RenderEngine {
             });
 
         // Create a temporary material bindings to get the layout that matches our material system
-        let temp_material_bindings = crate::gfx::resources::material::MaterialBindings::new(&device);
+        let temp_material_bindings =
+            crate::gfx::resources::material::MaterialBindings::new(&device);
         let material_bind_group_layout = temp_material_bindings.bind_group_layouts().clone();
 
         // Create visualization renderer (before device is moved)
@@ -389,8 +390,12 @@ impl RenderEngine {
     /// * `scene` - Scene containing objects to render
     /// * `visualization_planes` - Visualization planes with simulation data
     /// * `ui_callback` - Optional function that renders UI elements
-    pub fn render_frame<F>(&mut self, scene: &Scene, visualization_planes: &[VisualizationPlane], ui_callback: Option<F>)
-    where
+    pub fn render_frame<F>(
+        &mut self,
+        scene: &Scene,
+        visualization_planes: &[VisualizationPlane],
+        ui_callback: Option<F>,
+    ) where
         F: FnOnce(&wgpu::Device, &wgpu::Queue, &mut wgpu::CommandEncoder, &wgpu::TextureView),
     {
         let surface_texture = self
@@ -534,8 +539,9 @@ impl RenderEngine {
         // PASS 5: Visualization rendering (separate from scene objects)
         if !visualization_planes.is_empty() {
             // Update visualization camera with scene camera
-            self.visualization_renderer.update_camera(&self.queue, scene.camera_manager.get_view_proj_matrix());
-            
+            self.visualization_renderer
+                .update_camera(&self.queue, scene.camera_manager.get_view_proj_matrix());
+
             // Render visualization planes with their simulation data
             self.visualization_renderer.render_visualization_pass(
                 &mut encoder,
@@ -578,7 +584,11 @@ impl RenderEngine {
     }
 
     /// Convenience method for rendering with visualizations but no UI
-    pub fn render_frame_with_visualizations(&mut self, scene: &Scene, visualization_planes: &[VisualizationPlane]) {
+    pub fn render_frame_with_visualizations(
+        &mut self,
+        scene: &Scene,
+        visualization_planes: &[VisualizationPlane],
+    ) {
         self.render_frame(
             scene,
             visualization_planes,
@@ -588,12 +598,11 @@ impl RenderEngine {
 
     /// Convenience method for rendering with both visualizations and UI
     pub fn render_frame_with_visualizations_and_ui<F>(
-        &mut self, 
-        scene: &Scene, 
+        &mut self,
+        scene: &Scene,
         visualization_planes: &[VisualizationPlane],
-        ui_callback: F
-    )
-    where
+        ui_callback: F,
+    ) where
         F: FnOnce(&wgpu::Device, &wgpu::Queue, &mut wgpu::CommandEncoder, &wgpu::TextureView),
     {
         self.render_frame(scene, visualization_planes, Some(ui_callback));

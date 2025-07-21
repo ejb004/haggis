@@ -180,7 +180,7 @@ fn calculate_cartesian_eye_position(
     // Invert yaw to get correct rotation direction (negative yaw for right-handed system)
     return Vector3::new(
         distance * (-yaw).sin() * pitch.cos(), // X: right (inverted yaw)
-        distance * (-yaw).cos() * pitch.cos(), // Y: forward (inverted yaw) 
-        distance * pitch.sin(),                 // Z: up
+        distance * (-yaw).cos() * pitch.cos(), // Y: forward (inverted yaw)
+        distance * pitch.sin(),                // Z: up
     ) + target;
 }

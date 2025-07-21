@@ -15,12 +15,12 @@
 //! cargo run --example custom_compute_shader
 //! ```
 
+use cgmath::Vector3;
 use haggis::simulation::low_level::ComputeContext;
 use haggis::simulation::traits::Simulation;
 use haggis::ui::default_transform_panel;
-use wgpu::{BufferUsages, Device, Queue};
-use cgmath::Vector3;
 use std::sync::Arc;
+use wgpu::{BufferUsages, Device, Queue};
 
 // Custom compute shader for advanced particle simulation
 const CUSTOM_PARTICLE_SHADER: &str = r#"
@@ -197,7 +197,7 @@ struct CustomComputeSimulation {
     context: ComputeContext,
     particle_count: usize,
     simulation_time: f32,
-    
+
     // Simulation parameters
     gravity: Vector3<f32>,
     damping: f32,
@@ -205,7 +205,7 @@ struct CustomComputeSimulation {
     cohesion_strength: f32,
     alignment_strength: f32,
     max_speed: f32,
-    
+
     // UI parameters
     show_debug: bool,
     pause_simulation: bool,
@@ -214,7 +214,7 @@ struct CustomComputeSimulation {
 impl CustomComputeSimulation {
     fn new(device: Arc<Device>, queue: Arc<Queue>) -> Self {
         let context = ComputeContext::new(device, queue);
-        
+
         Self {
             context,
             particle_count: 2048,
@@ -237,14 +237,14 @@ impl CustomComputeSimulation {
                 let angle = (i as f32 / self.particle_count as f32) * 2.0 * std::f32::consts::PI;
                 let radius = 3.0;
                 [
-                    radius * angle.cos(),           // position.x
-                    radius * angle.sin(),           // position.y
+                    radius * angle.cos(),          // position.x
+                    radius * angle.sin(),          // position.y
                     5.0 + (i as f32 * 0.01) % 3.0, // position.z
-                    0.0,                            // velocity.x
-                    0.0,                            // velocity.y
-                    0.0,                            // velocity.z
-                    0.0,                            // acceleration.x
-                    0.0,                            // acceleration.y
+                    0.0,                           // velocity.x
+                    0.0,                           // velocity.y
+                    0.0,                           // velocity.z
+                    0.0,                           // acceleration.x
+                    0.0,                           // acceleration.y
                 ]
             })
             .collect();
@@ -258,18 +258,18 @@ impl CustomComputeSimulation {
 
         // Create parameters buffer
         let params = [
-            self.particle_count as f32,     // particle_count
-            0.016,                          // delta_time (will be updated)
-            self.gravity.x,                 // gravity.x
-            self.gravity.y,                 // gravity.y
-            self.gravity.z,                 // gravity.z
-            self.damping,                   // damping
-            self.separation_distance,       // separation_distance
-            self.cohesion_strength,         // cohesion_strength
-            self.alignment_strength,        // alignment_strength
-            self.max_speed,                 // max_speed
-            self.simulation_time,           // time
-            0.0,                            // padding
+            self.particle_count as f32, // particle_count
+            0.016,                      // delta_time (will be updated)
+            self.gravity.x,             // gravity.x
+            self.gravity.y,             // gravity.y
+            self.gravity.z,             // gravity.z
+            self.damping,               // damping
+            self.separation_distance,   // separation_distance
+            self.cohesion_strength,     // cohesion_strength
+            self.alignment_strength,    // alignment_strength
+            self.max_speed,             // max_speed
+            self.simulation_time,       // time
+            0.0,                        // padding
         ];
 
         self.context.create_buffer(
@@ -283,10 +283,13 @@ impl CustomComputeSimulation {
 
     fn setup_compute_pipeline(&mut self) -> Result<(), String> {
         // Create shader module
-        let shader = self.context.create_shader_module("custom_particle_shader", CUSTOM_PARTICLE_SHADER)?;
-        
+        let shader = self
+            .context
+            .create_shader_module("custom_particle_shader", CUSTOM_PARTICLE_SHADER)?;
+
         // Create compute pipeline
-        self.context.create_compute_pipeline("particle_update", &shader, "main")?;
+        self.context
+            .create_compute_pipeline("particle_update", &shader, "main")?;
 
         // Create bind group layout and bind group
         // Note: This is simplified - actual implementation would need proper bind group setup
@@ -295,7 +298,7 @@ impl CustomComputeSimulation {
 
     fn update_parameters(&mut self, delta_time: f32) -> Result<(), String> {
         self.simulation_time += delta_time;
-        
+
         let params = [
             self.particle_count as f32,
             delta_time,
@@ -311,7 +314,8 @@ impl CustomComputeSimulation {
             0.0,
         ];
 
-        self.context.update_buffer("params", bytemuck::cast_slice::<f32, u8>(&params))?;
+        self.context
+            .update_buffer("params", bytemuck::cast_slice::<f32, u8>(&params))?;
         Ok(())
     }
 
@@ -321,7 +325,11 @@ impl CustomComputeSimulation {
         let workgroup_count = (self.particle_count + workgroup_size - 1) / workgroup_size;
 
         // Dispatch compute shader
-        self.context.dispatch("particle_update", "particle_bind_group", (workgroup_count as u32, 1, 1))?;
+        self.context.dispatch(
+            "particle_update",
+            "particle_bind_group",
+            (workgroup_count as u32, 1, 1),
+        )?;
         Ok(())
     }
 }
@@ -332,7 +340,7 @@ impl Simulation for CustomComputeSimulation {
         if let Err(e) = self.setup_buffers() {
             eprintln!("Failed to setup buffers: {}", e);
         }
-        
+
         if let Err(e) = self.setup_compute_pipeline() {
             eprintln!("Failed to setup compute pipeline: {}", e);
         }
@@ -362,15 +370,15 @@ impl Simulation for CustomComputeSimulation {
             .build(|| {
                 ui.text("Low-Level API: Custom WGSL Compute Shader");
                 ui.separator();
-                
+
                 ui.text(&format!("Particles: {}", self.particle_count));
                 ui.text(&format!("Simulation Time: {:.2}s", self.simulation_time));
                 ui.spacing();
-                
+
                 ui.checkbox("Pause Simulation", &mut self.pause_simulation);
                 ui.checkbox("Show Debug Info", &mut self.show_debug);
                 ui.spacing();
-                
+
                 ui.text("Physics Parameters:");
                 let mut gravity_x = self.gravity.x;
                 let mut gravity_y = self.gravity.y;
@@ -379,22 +387,27 @@ impl Simulation for CustomComputeSimulation {
                 ui.slider("Gravity Y", -10.0, 10.0, &mut gravity_y);
                 ui.slider("Gravity Z", -10.0, 10.0, &mut gravity_z);
                 self.gravity = Vector3::new(gravity_x, gravity_y, gravity_z);
-                
+
                 ui.slider("Damping", 0.9, 1.0, &mut self.damping);
                 ui.slider("Max Speed", 1.0, 20.0, &mut self.max_speed);
                 ui.spacing();
-                
+
                 ui.text("Flocking Parameters:");
-                ui.slider("Separation Distance", 0.1, 2.0, &mut self.separation_distance);
+                ui.slider(
+                    "Separation Distance",
+                    0.1,
+                    2.0,
+                    &mut self.separation_distance,
+                );
                 ui.slider("Cohesion Strength", 0.0, 1.0, &mut self.cohesion_strength);
                 ui.slider("Alignment Strength", 0.0, 1.0, &mut self.alignment_strength);
                 ui.spacing();
-                
+
                 if ui.button("Reset Simulation") {
                     self.simulation_time = 0.0;
                     let _ = self.setup_buffers();
                 }
-                
+
                 ui.separator();
                 ui.text("Custom Shader Features:");
                 ui.text("✓ Advanced flocking behavior");
@@ -411,19 +424,22 @@ impl Simulation for CustomComputeSimulation {
                 .build(|| {
                     ui.text("Low-Level Implementation Details:");
                     ui.separator();
-                    
+
                     ui.text("Compute Shader:");
                     ui.text(&format!("  Workgroup Size: 64"));
-                    ui.text(&format!("  Workgroups: {}", (self.particle_count + 63) / 64));
+                    ui.text(&format!(
+                        "  Workgroups: {}",
+                        (self.particle_count + 63) / 64
+                    ));
                     ui.text(&format!("  Threads: {}", self.particle_count));
                     ui.spacing();
-                    
+
                     ui.text("Memory Layout:");
                     ui.text("  Particles: Storage Buffer");
                     ui.text("  Parameters: Uniform Buffer");
                     ui.text("  Binding Group: @group(0)");
                     ui.spacing();
-                    
+
                     ui.text("Shader Operations:");
                     ui.text("  1. Neighbor search (O(n²))");
                     ui.text("  2. Flocking force calculation");
@@ -431,10 +447,13 @@ impl Simulation for CustomComputeSimulation {
                     ui.text("  4. Physics integration");
                     ui.text("  5. Boundary handling");
                     ui.spacing();
-                    
+
                     ui.text("Performance:");
                     ui.text(&format!("  Particles/frame: {}", self.particle_count));
-                    ui.text(&format!("  Comparisons/frame: {}", self.particle_count * self.particle_count));
+                    ui.text(&format!(
+                        "  Comparisons/frame: {}",
+                        self.particle_count * self.particle_count
+                    ));
                     ui.text("  GPU parallel execution");
                 });
         }
@@ -445,7 +464,7 @@ impl Simulation for CustomComputeSimulation {
             .build(|| {
                 ui.text("Custom Compute Shader (WGSL):");
                 ui.separator();
-                
+
                 // Show first part of shader code
                 ui.text("struct Particle {");
                 ui.text("    position: vec3<f32>,");
@@ -456,7 +475,7 @@ impl Simulation for CustomComputeSimulation {
                 ui.text("    // ... more fields");
                 ui.text("};");
                 ui.spacing();
-                
+
                 ui.text("@compute @workgroup_size(64)");
                 ui.text("fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {");
                 ui.text("    let index = global_id.x;");
@@ -465,7 +484,7 @@ impl Simulation for CustomComputeSimulation {
                 ui.text("    // Physics integration");
                 ui.text("}");
                 ui.spacing();
-                
+
                 ui.text("Key Features:");
                 ui.text("• Direct GPU memory access");
                 ui.text("• Parallel neighbor search");
@@ -473,7 +492,7 @@ impl Simulation for CustomComputeSimulation {
                 ui.text("• Real-time parameter updates");
                 ui.text("• Efficient workgroup utilization");
                 ui.spacing();
-                
+
                 ui.text("This demonstrates the power of");
                 ui.text("custom compute shaders for");
                 ui.text("specialized simulation algorithms.");
@@ -510,7 +529,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .app_state
         .scene
         .add_material_rgb("compute_particle", 0.2, 1.0, 0.8, 0.9, 0.4);
-    
+
     haggis
         .app_state
         .scene
@@ -546,7 +565,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .build(|| {
                 ui.text("Low-Level API: Custom WGSL Compute Shaders");
                 ui.separator();
-                
+
                 ui.text("Implementation Steps:");
                 ui.text("1. Write custom WGSL compute shader");
                 ui.text("2. Create and manage GPU buffers");
@@ -554,7 +573,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ui.text("4. Dispatch compute workgroups");
                 ui.text("5. Handle buffer updates");
                 ui.spacing();
-                
+
                 ui.text("Advanced Features:");
                 ui.text("• Custom algorithms (flocking, fluid)");
                 ui.text("• Multi-pass rendering");
@@ -562,7 +581,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ui.text("• Workgroup optimization");
                 ui.text("• Memory coalescing");
                 ui.spacing();
-                
+
                 ui.text("Performance Benefits:");
                 ui.text("✓ Maximum GPU utilization");
                 ui.text("✓ Custom algorithm implementation");
@@ -570,7 +589,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ui.text("✓ Specialized data structures");
                 ui.text("✓ Optimized memory access");
                 ui.spacing();
-                
+
                 ui.text("Use Cases:");
                 ui.text("• Complex particle interactions");
                 ui.text("• Fluid dynamics simulation");
@@ -578,7 +597,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ui.text("• Custom physics solvers");
                 ui.text("• Specialized rendering effects");
                 ui.spacing();
-                
+
                 ui.text("Note: This example demonstrates the");
                 ui.text("concept. Full implementation requires");
                 ui.text("integration with the haggis GPU context.");

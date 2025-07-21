@@ -28,12 +28,12 @@
 
 pub mod cut_plane_2d;
 pub mod manager;
+pub mod rendering;
 pub mod traits;
 pub mod ui;
-pub mod rendering;
 
 // Re-export main types
 pub use cut_plane_2d::CutPlane2D;
 pub use manager::VisualizationManager;
+pub use rendering::{VisualizationMaterial, VisualizationRenderer};
 pub use traits::VisualizationComponent;
-pub use rendering::{VisualizationRenderer, VisualizationMaterial};

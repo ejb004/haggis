@@ -2,8 +2,8 @@
 //!
 //! Materials specifically for visualization components, separate from scene materials.
 
-use wgpu::*;
 use crate::gfx::resources::texture_resource::TextureResource;
+use wgpu::*;
 
 /// Material for visualization components
 #[derive(Clone)]
@@ -60,14 +60,8 @@ impl VisualizationMaterial {
             })
             .collect();
 
-        let texture = TextureResource::create_from_rgba_data(
-            device,
-            queue,
-            &rgba_data,
-            width,
-            height,
-            label,
-        );
+        let texture =
+            TextureResource::create_from_rgba_data(device, queue, &rgba_data, width, height, label);
 
         // Create a dummy storage buffer for the material bind group
         let dummy_buffer = device.create_buffer(&BufferDescriptor {
@@ -80,11 +74,11 @@ impl VisualizationMaterial {
         // Create transform buffer (identity matrix initially)
         let identity_matrix: [[f32; 4]; 4] = [
             [1.0, 0.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0, 0.0], 
+            [0.0, 1.0, 0.0, 0.0],
             [0.0, 0.0, 1.0, 0.0],
             [0.0, 0.0, 0.0, 1.0],
         ];
-        
+
         let transform_buffer = device.create_buffer(&BufferDescriptor {
             label: Some("Visualization Transform Buffer"),
             size: std::mem::size_of::<[[f32; 4]; 4]>() as BufferAddress,
@@ -93,7 +87,11 @@ impl VisualizationMaterial {
         });
 
         // Write identity matrix to buffer
-        queue.write_buffer(&transform_buffer, 0, bytemuck::cast_slice(&[identity_matrix]));
+        queue.write_buffer(
+            &transform_buffer,
+            0,
+            bytemuck::cast_slice(&[identity_matrix]),
+        );
 
         // Create the material bind group layout
         let layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
@@ -128,7 +126,7 @@ impl VisualizationMaterial {
                     },
                     count: None,
                 },
-                // Storage buffer binding  
+                // Storage buffer binding
                 BindGroupLayoutEntry {
                     binding: 3,
                     visibility: ShaderStages::FRAGMENT,
@@ -181,12 +179,16 @@ impl VisualizationMaterial {
         checker_size: u32,
     ) -> Self {
         let mut data = Vec::with_capacity((width * height) as usize);
-        
+
         for y in 0..height {
             for x in 0..width {
                 let checker_x = (x / checker_size) % 2;
                 let checker_y = (y / checker_size) % 2;
-                let value = if (checker_x + checker_y) % 2 == 0 { 1.0 } else { 0.0 };
+                let value = if (checker_x + checker_y) % 2 == 0 {
+                    1.0
+                } else {
+                    0.0
+                };
                 data.push(value);
             }
         }
@@ -195,14 +197,19 @@ impl VisualizationMaterial {
     }
 
     /// Update the transform matrix for this material
-    pub fn update_transform(&self, queue: &Queue, position: cgmath::Vector3<f32>, size: cgmath::Vector3<f32>) {
+    pub fn update_transform(
+        &self,
+        queue: &Queue,
+        position: cgmath::Vector3<f32>,
+        size: cgmath::Vector3<f32>,
+    ) {
         if let Some(transform_buffer) = &self.transform_buffer {
             // Create transform matrix exactly like regular objects: T * R * S
             let translation_matrix = cgmath::Matrix4::from_translation(position);
             let rotation_matrix = cgmath::Matrix4::from_angle_y(cgmath::Deg(0.0)); // No rotation for now
             let scale_matrix = cgmath::Matrix4::from_scale(size.x); // Use uniform scale like regular objects
             let model_matrix = translation_matrix * rotation_matrix * scale_matrix;
-            
+
             // Convert to the format expected by wgsl (column-major)
             let matrix_array: [[f32; 4]; 4] = model_matrix.into();
             queue.write_buffer(transform_buffer, 0, bytemuck::cast_slice(&[matrix_array]));

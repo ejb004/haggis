@@ -3,10 +3,10 @@
 //! This module defines the core traits that all visualization components must implement
 //! to integrate with the Haggis visualization system.
 
-use imgui::Ui;
-use wgpu::{Device, Queue};
 use crate::gfx::scene::Scene;
+use imgui::Ui;
 use std::any::Any;
+use wgpu::{Device, Queue};
 
 /// Core trait for visualization components in the Haggis engine.
 ///

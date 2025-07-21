@@ -5,11 +5,11 @@
 use crate::{
     gfx::scene::Scene,
     simulation::traits::Simulation,
-    visualization::{traits::VisualizationComponent, manager::VisualizationManager},
+    visualization::{manager::VisualizationManager, traits::VisualizationComponent},
 };
 use imgui::Ui;
-use wgpu::{Device, Queue};
 use std::any::Any;
+use wgpu::{Device, Queue};
 
 /// Base simulation that supports adding visualization components
 ///
@@ -34,11 +34,16 @@ impl BaseSimulation {
     /// Add a visualization component to this simulation
     ///
     /// # Arguments
-    /// 
+    ///
     /// * `name` - Unique name for the visualization component
     /// * `component` - The visualization component to add
-    pub fn add_visualization<T: VisualizationComponent + 'static>(&mut self, name: &str, component: T) {
-        self.visualization_manager.add_component(name.to_string(), Box::new(component));
+    pub fn add_visualization<T: VisualizationComponent + 'static>(
+        &mut self,
+        name: &str,
+        component: T,
+    ) {
+        self.visualization_manager
+            .add_component(name.to_string(), Box::new(component));
     }
 
     /// Remove a visualization component
@@ -57,7 +62,12 @@ impl BaseSimulation {
     }
 
     /// Update all visualization components
-    pub fn update_visualizations(&mut self, delta_time: f32, device: Option<&Device>, queue: Option<&Queue>) {
+    pub fn update_visualizations(
+        &mut self,
+        delta_time: f32,
+        device: Option<&Device>,
+        queue: Option<&Queue>,
+    ) {
         self.visualization_manager.update(delta_time, device, queue);
     }
 
@@ -67,8 +77,14 @@ impl BaseSimulation {
     }
 
     /// Update material textures for all visualizations  
-    pub fn update_visualization_material_textures(&mut self, scene: &mut Scene, device: &Device, queue: &Queue) {
-        self.visualization_manager.update_material_textures(scene, device, queue);
+    pub fn update_visualization_material_textures(
+        &mut self,
+        scene: &mut Scene,
+        device: &Device,
+        queue: &Queue,
+    ) {
+        self.visualization_manager
+            .update_material_textures(scene, device, queue);
     }
 
     /// Get a reference to the visualization manager
@@ -116,14 +132,13 @@ impl Simulation for BaseSimulation {
     }
 
     fn render_ui(&mut self, ui: &Ui) {
-        ui.window(&format!("{} Simulation", self.name))
-            .build(|| {
-                ui.checkbox("Running", &mut self.running);
-                ui.separator();
-                
-                // Render visualization UI
-                self.render_visualization_ui(ui);
-            });
+        ui.window(&format!("{} Simulation", self.name)).build(|| {
+            ui.checkbox("Running", &mut self.running);
+            ui.separator();
+
+            // Render visualization UI
+            self.render_visualization_ui(ui);
+        });
     }
 
     fn name(&self) -> &str {

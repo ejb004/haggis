@@ -15,12 +15,12 @@
 //! cargo run --example advanced_rendering
 //! ```
 
+use bytemuck::{Pod, Zeroable};
 use haggis::simulation::low_level::ComputeContext;
 use haggis::simulation::traits::Simulation;
 use haggis::ui::default_transform_panel;
-use wgpu::{BufferUsages, Device, Queue};
 use std::sync::Arc;
-use bytemuck::{Pod, Zeroable};
+use wgpu::{BufferUsages, Device, Queue};
 
 // Custom vertex data for instanced rendering
 #[repr(C)]
@@ -28,8 +28,8 @@ use bytemuck::{Pod, Zeroable};
 struct InstanceData {
     position: [f32; 3],
     scale: f32,
-    rotation: [f32; 4],      // Quaternion
-    color: [f32; 4],         // RGBA
+    rotation: [f32; 4], // Quaternion
+    color: [f32; 4],    // RGBA
     velocity: [f32; 3],
     age: f32,
 }
@@ -207,24 +207,24 @@ struct AdvancedRenderingSimulation {
     particle_count: usize,
     simulation_particles: Vec<SimulationParticle>,
     instance_data: Vec<InstanceData>,
-    
+
     // Rendering settings
     instanced_rendering: bool,
     custom_shaders: bool,
     multi_pass_rendering: bool,
     velocity_based_effects: bool,
-    
+
     // Visual effects parameters
     glow_intensity: f32,
     color_shift_speed: f32,
     noise_scale: f32,
     fade_distance: f32,
-    
+
     // Performance monitoring
     render_time: f32,
     update_time: f32,
     draw_calls: u32,
-    
+
     // Simulation state
     simulation_time: f32,
     running: bool,
@@ -233,7 +233,7 @@ struct AdvancedRenderingSimulation {
 impl AdvancedRenderingSimulation {
     fn new(device: Arc<Device>, queue: Arc<Queue>) -> Self {
         let context = ComputeContext::new(device, queue);
-        
+
         Self {
             context,
             particle_count: 8192,
@@ -261,7 +261,7 @@ impl AdvancedRenderingSimulation {
             .map(|i| {
                 let angle = (i as f32 / self.particle_count as f32) * 2.0 * std::f32::consts::PI;
                 let radius = 5.0;
-                
+
                 SimulationParticle {
                     position: [
                         radius * angle.cos(),
@@ -295,9 +295,9 @@ impl AdvancedRenderingSimulation {
 
     fn update_simulation(&mut self, delta_time: f32) -> Result<(), String> {
         let update_start = std::time::Instant::now();
-        
+
         self.simulation_time += delta_time;
-        
+
         // Update simulation particles (CPU version for demonstration)
         for particle in &mut self.simulation_particles {
             if particle.active == 0 {
@@ -350,7 +350,7 @@ impl AdvancedRenderingSimulation {
 
     fn prepare_rendering_data(&mut self) -> Result<(), String> {
         let render_start = std::time::Instant::now();
-        
+
         // Convert simulation data to instance data for rendering
         self.instance_data.clear();
         self.instance_data.reserve(self.particle_count);
@@ -360,9 +360,10 @@ impl AdvancedRenderingSimulation {
                 continue;
             }
 
-            let speed = (particle.velocity[0] * particle.velocity[0] + 
-                        particle.velocity[1] * particle.velocity[1] + 
-                        particle.velocity[2] * particle.velocity[2]).sqrt();
+            let speed = (particle.velocity[0] * particle.velocity[0]
+                + particle.velocity[1] * particle.velocity[1]
+                + particle.velocity[2] * particle.velocity[2])
+                .sqrt();
 
             // Create rotation quaternion based on velocity
             let rotation = if speed > 0.1 {
@@ -381,12 +382,12 @@ impl AdvancedRenderingSimulation {
             let age_factor = 1.0 - (particle.lifetime / particle.max_lifetime);
             let type_colors = [
                 [1.0, 0.3, 0.3, 1.0], // Red
-                [0.3, 1.0, 0.3, 1.0], // Green  
+                [0.3, 1.0, 0.3, 1.0], // Green
                 [0.3, 0.3, 1.0, 1.0], // Blue
             ];
-            
+
             let mut color = type_colors[particle.particle_type as usize % 3];
-            
+
             // Apply velocity-based color shift
             if self.velocity_based_effects {
                 let speed_factor = (speed * self.color_shift_speed * 0.1).min(1.0);
@@ -419,8 +420,12 @@ impl AdvancedRenderingSimulation {
         }
 
         self.render_time = render_start.elapsed().as_secs_f32();
-        self.draw_calls = if self.instanced_rendering { 1 } else { self.instance_data.len() as u32 };
-        
+        self.draw_calls = if self.instanced_rendering {
+            1
+        } else {
+            self.instance_data.len() as u32
+        };
+
         Ok(())
     }
 
@@ -430,12 +435,16 @@ impl AdvancedRenderingSimulation {
         }
 
         // Create custom shaders
-        let _vertex_shader = self.context.create_shader_module("particle_vertex", PARTICLE_VERTEX_SHADER)?;
-        let _fragment_shader = self.context.create_shader_module("particle_fragment", PARTICLE_FRAGMENT_SHADER)?;
+        let _vertex_shader = self
+            .context
+            .create_shader_module("particle_vertex", PARTICLE_VERTEX_SHADER)?;
+        let _fragment_shader = self
+            .context
+            .create_shader_module("particle_fragment", PARTICLE_FRAGMENT_SHADER)?;
 
         // Note: In a real implementation, we would create a full render pipeline
         // This is a simplified demonstration of the concept
-        
+
         Ok(())
     }
 }
@@ -445,7 +454,7 @@ impl Simulation for AdvancedRenderingSimulation {
         if let Err(e) = self.initialize_simulation_data() {
             eprintln!("Failed to initialize simulation data: {}", e);
         }
-        
+
         if let Err(e) = self.setup_custom_render_pipeline() {
             eprintln!("Failed to setup custom render pipeline: {}", e);
         }
@@ -474,35 +483,35 @@ impl Simulation for AdvancedRenderingSimulation {
             .build(|| {
                 ui.text("Low-Level API: Custom Rendering Integration");
                 ui.separator();
-                
+
                 ui.text(&format!("Active Particles: {}", self.instance_data.len()));
                 ui.text(&format!("Draw Calls: {}", self.draw_calls));
                 ui.text(&format!("Simulation Time: {:.2}s", self.simulation_time));
                 ui.spacing();
-                
+
                 ui.checkbox("Instanced Rendering", &mut self.instanced_rendering);
                 ui.checkbox("Custom Shaders", &mut self.custom_shaders);
                 ui.checkbox("Multi-pass Rendering", &mut self.multi_pass_rendering);
                 ui.checkbox("Velocity-based Effects", &mut self.velocity_based_effects);
                 ui.spacing();
-                
+
                 ui.text("Visual Effects:");
                 ui.slider("Glow Intensity", 0.0, 2.0, &mut self.glow_intensity);
                 ui.slider("Color Shift Speed", 0.0, 3.0, &mut self.color_shift_speed);
                 ui.slider("Noise Scale", 0.1, 5.0, &mut self.noise_scale);
                 ui.slider("Fade Distance", 10.0, 100.0, &mut self.fade_distance);
                 ui.spacing();
-                
+
                 ui.text("Particle Count:");
                 let mut count = self.particle_count as i32;
                 if ui.slider("##particles", 1024, 16384, &mut count) {
                     self.particle_count = count as usize;
                 }
-                
+
                 if ui.button("Reinitialize") {
                     let _ = self.initialize_simulation_data();
                 }
-                
+
                 ui.separator();
                 ui.text("Advanced Rendering Features:");
                 ui.text("✓ Custom vertex/fragment shaders");
@@ -519,26 +528,55 @@ impl Simulation for AdvancedRenderingSimulation {
             .build(|| {
                 ui.text("Performance Metrics:");
                 ui.separator();
-                
+
                 ui.text(&format!("Update Time: {:.3}ms", self.update_time * 1000.0));
                 ui.text(&format!("Render Prep: {:.3}ms", self.render_time * 1000.0));
                 ui.text(&format!("Draw Calls: {}", self.draw_calls));
                 ui.text(&format!("Instances: {}", self.instance_data.len()));
                 ui.spacing();
-                
+
                 ui.text("Rendering Stats:");
-                ui.text(&format!("Instanced: {}", if self.instanced_rendering { "Yes" } else { "No" }));
-                ui.text(&format!("Custom Shaders: {}", if self.custom_shaders { "Yes" } else { "No" }));
-                ui.text(&format!("Multi-pass: {}", if self.multi_pass_rendering { "Yes" } else { "No" }));
+                ui.text(&format!(
+                    "Instanced: {}",
+                    if self.instanced_rendering {
+                        "Yes"
+                    } else {
+                        "No"
+                    }
+                ));
+                ui.text(&format!(
+                    "Custom Shaders: {}",
+                    if self.custom_shaders { "Yes" } else { "No" }
+                ));
+                ui.text(&format!(
+                    "Multi-pass: {}",
+                    if self.multi_pass_rendering {
+                        "Yes"
+                    } else {
+                        "No"
+                    }
+                ));
                 ui.spacing();
-                
+
                 ui.text("Memory Usage:");
-                ui.text(&format!("Particle Data: {:.2} KB", 
-                    (self.particle_count * std::mem::size_of::<SimulationParticle>()) as f64 / 1024.0));
-                ui.text(&format!("Instance Data: {:.2} KB", 
-                    (self.instance_data.len() * std::mem::size_of::<InstanceData>()) as f64 / 1024.0));
-                ui.text(&format!("Total GPU Memory: {:.2} MB", 
-                    (self.particle_count * (std::mem::size_of::<SimulationParticle>() + std::mem::size_of::<InstanceData>())) as f64 / 1024.0 / 1024.0));
+                ui.text(&format!(
+                    "Particle Data: {:.2} KB",
+                    (self.particle_count * std::mem::size_of::<SimulationParticle>()) as f64
+                        / 1024.0
+                ));
+                ui.text(&format!(
+                    "Instance Data: {:.2} KB",
+                    (self.instance_data.len() * std::mem::size_of::<InstanceData>()) as f64
+                        / 1024.0
+                ));
+                ui.text(&format!(
+                    "Total GPU Memory: {:.2} MB",
+                    (self.particle_count
+                        * (std::mem::size_of::<SimulationParticle>()
+                            + std::mem::size_of::<InstanceData>())) as f64
+                        / 1024.0
+                        / 1024.0
+                ));
             });
 
         // Shader code preview
@@ -547,14 +585,14 @@ impl Simulation for AdvancedRenderingSimulation {
             .build(|| {
                 ui.text("Custom Vertex Shader Features:");
                 ui.separator();
-                
+
                 ui.text("• Instanced rendering support");
                 ui.text("• Quaternion-based rotation");
                 ui.text("• Per-instance scaling");
                 ui.text("• Velocity pass-through");
                 ui.text("• Age-based attributes");
                 ui.spacing();
-                
+
                 ui.text("Custom Fragment Shader Effects:");
                 ui.text("• Velocity-based color shifting");
                 ui.text("• Age-based color transitions");
@@ -563,7 +601,7 @@ impl Simulation for AdvancedRenderingSimulation {
                 ui.text("• Distance-based fading");
                 ui.text("• Age-based transparency");
                 ui.spacing();
-                
+
                 ui.text("Shader Code Example:");
                 ui.text("```wgsl");
                 ui.text("// Velocity-based color shift");
@@ -584,7 +622,7 @@ impl Simulation for AdvancedRenderingSimulation {
             .build(|| {
                 ui.text("Low-Level Rendering Integration:");
                 ui.separator();
-                
+
                 ui.text("Data Flow:");
                 ui.text("1. Simulation updates particle data");
                 ui.text("2. Convert to instance data");
@@ -592,7 +630,7 @@ impl Simulation for AdvancedRenderingSimulation {
                 ui.text("4. Render with custom pipeline");
                 ui.text("5. Apply visual effects in shaders");
                 ui.spacing();
-                
+
                 ui.text("Optimization Techniques:");
                 ui.text("• Instanced rendering reduces draw calls");
                 ui.text("• Custom shaders enable effects");
@@ -600,7 +638,7 @@ impl Simulation for AdvancedRenderingSimulation {
                 ui.text("• LOD based on distance/age");
                 ui.text("• Frustum culling for large scenes");
                 ui.spacing();
-                
+
                 ui.text("Custom Pipeline Benefits:");
                 ui.text("✓ Direct simulation-to-rendering");
                 ui.text("✓ Specialized visual effects");
@@ -608,7 +646,7 @@ impl Simulation for AdvancedRenderingSimulation {
                 ui.text("✓ Artistic control");
                 ui.text("✓ Platform-specific features");
                 ui.spacing();
-                
+
                 ui.text("This demonstrates the low-level API's");
                 ui.text("power for custom rendering integration");
                 ui.text("and advanced visual effects.");
@@ -645,12 +683,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .app_state
         .scene
         .add_material_rgb("render_particle_red", 1.0, 0.3, 0.3, 0.9, 0.5);
-    
+
     haggis
         .app_state
         .scene
         .add_material_rgb("render_particle_green", 0.3, 1.0, 0.3, 0.9, 0.5);
-    
+
     haggis
         .app_state
         .scene
@@ -663,7 +701,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             1 => "render_particle_green",
             _ => "render_particle_blue",
         };
-        
+
         haggis
             .add_object("examples/test/cube.obj")
             .with_material(material)
@@ -684,7 +722,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .build(|| {
                 ui.text("Low-Level API: Advanced Rendering Integration");
                 ui.separator();
-                
+
                 ui.text("Key Concepts:");
                 ui.text("1. Direct simulation-to-rendering data flow");
                 ui.text("2. Custom vertex/fragment shaders");
@@ -692,7 +730,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ui.text("4. Multi-pass rendering techniques");
                 ui.text("5. Real-time visual effects");
                 ui.spacing();
-                
+
                 ui.text("Advanced Features:");
                 ui.text("• Custom WGSL shaders");
                 ui.text("• Instanced rendering");
@@ -701,7 +739,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ui.text("• Procedural noise");
                 ui.text("• Distance-based LOD");
                 ui.spacing();
-                
+
                 ui.text("Performance Benefits:");
                 ui.text("✓ Reduced draw calls");
                 ui.text("✓ GPU-optimized effects");
@@ -709,7 +747,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ui.text("✓ Scalable to large particle counts");
                 ui.text("✓ Real-time parameter updates");
                 ui.spacing();
-                
+
                 ui.text("Use Cases:");
                 ui.text("• High-performance particle systems");
                 ui.text("• Custom visual effects");
@@ -717,7 +755,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ui.text("• Game engine integration");
                 ui.text("• Real-time simulations");
                 ui.spacing();
-                
+
                 ui.text("This demonstrates the ultimate flexibility");
                 ui.text("of the low-level API for advanced users");
                 ui.text("requiring custom rendering pipelines.");

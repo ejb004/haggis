@@ -731,7 +731,8 @@ impl ApplicationHandler for AppState {
                 render_engine.update(self.scene.camera_manager.camera.uniform);
 
                 // Collect visualization planes from both the visualization manager and simulation manager
-                let mut visualization_planes = self.visualization_manager.get_visualization_planes();
+                let mut visualization_planes =
+                    self.visualization_manager.get_visualization_planes();
                 let simulation_planes = self.simulation_manager.get_visualization_planes();
                 visualization_planes.extend(simulation_planes);
 
@@ -752,7 +753,8 @@ impl ApplicationHandler for AppState {
                     );
                 } else {
                     // Render 3D scene with visualization planes only
-                    render_engine.render_frame_with_visualizations(&self.scene, &visualization_planes);
+                    render_engine
+                        .render_frame_with_visualizations(&self.scene, &visualization_planes);
                 }
             }
             _ => (),

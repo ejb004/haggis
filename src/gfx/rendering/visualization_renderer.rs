@@ -3,11 +3,11 @@
 //! Handles rendering of visualization planes separately from scene objects,
 //! ensuring simulation data is preserved and not overwritten by default materials.
 
-use wgpu::*;
-use cgmath::{Matrix4, Vector3};
 use super::render_pass_ext::RenderPassExt;
 use crate::gfx::camera::camera_utils::CameraUniform;
 use crate::visualization::rendering::VisualizationMaterial;
+use cgmath::{Matrix4, Vector3};
+use wgpu::*;
 
 /// Manages visualization-specific rendering separate from scene rendering
 pub struct VisualizationRenderer {
@@ -23,7 +23,7 @@ pub struct VisualizationPlane {
     pub position: Vector3<f32>,
     pub size: Vector3<f32>,
     pub material: VisualizationMaterial,
-    pub data_buffer: Option<Buffer>, // For compute shader data
+    pub data_buffer: Option<Buffer>,  // For compute shader data
     pub texture: Option<TextureView>, // For texture-based data
 }
 
@@ -32,7 +32,9 @@ impl VisualizationRenderer {
         // Create visualization-specific shader
         let shader = device.create_shader_module(ShaderModuleDescriptor {
             label: Some("Visualization Shader"),
-            source: ShaderSource::Wgsl(include_str!("../../visualization/rendering/shaders/visualization.wgsl").into()),
+            source: ShaderSource::Wgsl(
+                include_str!("../../visualization/rendering/shaders/visualization.wgsl").into(),
+            ),
         });
 
         // Create camera resources
@@ -43,19 +45,20 @@ impl VisualizationRenderer {
             mapped_at_creation: false,
         });
 
-        let camera_bind_group_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
-            label: Some("Visualization Camera Layout"),
-            entries: &[BindGroupLayoutEntry {
-                binding: 0,
-                visibility: ShaderStages::VERTEX,
-                ty: BindingType::Buffer {
-                    ty: BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-                count: None,
-            }],
-        });
+        let camera_bind_group_layout =
+            device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+                label: Some("Visualization Camera Layout"),
+                entries: &[BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: ShaderStages::VERTEX,
+                    ty: BindingType::Buffer {
+                        ty: BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+            });
 
         let camera_bind_group = device.create_bind_group(&BindGroupDescriptor {
             label: Some("Visualization Camera Bind Group"),
@@ -67,51 +70,52 @@ impl VisualizationRenderer {
         });
 
         // Create material bind group layout for visualization data
-        let material_bind_group_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
-            label: Some("Visualization Material Layout"),
-            entries: &[
-                // Texture binding
-                BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: ShaderStages::FRAGMENT,
-                    ty: BindingType::Texture {
-                        multisampled: false,
-                        view_dimension: TextureViewDimension::D2,
-                        sample_type: TextureSampleType::Float { filterable: true },
+        let material_bind_group_layout =
+            device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+                label: Some("Visualization Material Layout"),
+                entries: &[
+                    // Texture binding
+                    BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: ShaderStages::FRAGMENT,
+                        ty: BindingType::Texture {
+                            multisampled: false,
+                            view_dimension: TextureViewDimension::D2,
+                            sample_type: TextureSampleType::Float { filterable: true },
+                        },
+                        count: None,
                     },
-                    count: None,
-                },
-                // Sampler binding
-                BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: ShaderStages::FRAGMENT,
-                    ty: BindingType::Sampler(SamplerBindingType::Filtering),
-                    count: None,
-                },
-                // Transform uniform buffer binding
-                BindGroupLayoutEntry {
-                    binding: 2,
-                    visibility: ShaderStages::VERTEX,
-                    ty: BindingType::Buffer {
-                        ty: BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
+                    // Sampler binding
+                    BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: ShaderStages::FRAGMENT,
+                        ty: BindingType::Sampler(SamplerBindingType::Filtering),
+                        count: None,
                     },
-                    count: None,
-                },
-                // Storage buffer for compute data
-                BindGroupLayoutEntry {
-                    binding: 3,
-                    visibility: ShaderStages::FRAGMENT,
-                    ty: BindingType::Buffer {
-                        ty: BufferBindingType::Storage { read_only: true },
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
+                    // Transform uniform buffer binding
+                    BindGroupLayoutEntry {
+                        binding: 2,
+                        visibility: ShaderStages::VERTEX,
+                        ty: BindingType::Buffer {
+                            ty: BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
                     },
-                    count: None,
-                },
-            ],
-        });
+                    // Storage buffer for compute data
+                    BindGroupLayoutEntry {
+                        binding: 3,
+                        visibility: ShaderStages::FRAGMENT,
+                        ty: BindingType::Buffer {
+                            ty: BufferBindingType::Storage { read_only: true },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                ],
+            });
 
         // Create render pipeline
         let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
@@ -187,7 +191,9 @@ impl VisualizationRenderer {
 
         // Update transform matrices for all planes before rendering
         for plane in planes.iter() {
-            plane.material.update_transform(queue, plane.position, plane.size);
+            plane
+                .material
+                .update_transform(queue, plane.position, plane.size);
         }
 
         let mut render_pass = encoder.begin_render_pass(&RenderPassDescriptor {
@@ -214,7 +220,7 @@ impl VisualizationRenderer {
 
         // Set visualization pipeline (NOT scene pipeline)
         render_pass.set_pipeline(&self.pipeline);
-        
+
         // Set camera binding
         render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
 
@@ -234,9 +240,12 @@ impl VisualizationRenderer {
             view_position: [0.0, 0.0, 0.0, 1.0], // Placeholder for view position
             view_proj: view_proj_matrix.into(),
         };
-        
-        
-        queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(&[camera_uniform]));
+
+        queue.write_buffer(
+            &self.camera_buffer,
+            0,
+            bytemuck::cast_slice(&[camera_uniform]),
+        );
     }
 
     /// Render a single visualization plane (private)
@@ -248,7 +257,7 @@ impl VisualizationRenderer {
         // Bind the plane's simulation data material (NOT scene material)
         if let Some(bind_group) = &plane.material.bind_group {
             render_pass.set_visualization_bindings(bind_group, 1);
-            
+
             // Draw the plane geometry
             render_pass.draw_indexed(0..6, 0, 0..1);
         } else {
@@ -262,10 +271,22 @@ impl VisualizationRenderer {
 
         // Simple quad vertices
         let vertices = [
-            VisualizationVertex { position: [-1.0, -1.0, 0.0], tex_coords: [0.0, 1.0] },
-            VisualizationVertex { position: [ 1.0, -1.0, 0.0], tex_coords: [1.0, 1.0] },
-            VisualizationVertex { position: [ 1.0,  1.0, 0.0], tex_coords: [1.0, 0.0] },
-            VisualizationVertex { position: [-1.0,  1.0, 0.0], tex_coords: [0.0, 0.0] },
+            VisualizationVertex {
+                position: [-1.0, -1.0, 0.0],
+                tex_coords: [0.0, 1.0],
+            },
+            VisualizationVertex {
+                position: [1.0, -1.0, 0.0],
+                tex_coords: [1.0, 1.0],
+            },
+            VisualizationVertex {
+                position: [1.0, 1.0, 0.0],
+                tex_coords: [1.0, 0.0],
+            },
+            VisualizationVertex {
+                position: [-1.0, 1.0, 0.0],
+                tex_coords: [0.0, 0.0],
+            },
         ];
 
         let indices: [u16; 6] = [0, 1, 2, 2, 3, 0];

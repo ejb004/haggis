@@ -21,8 +21,8 @@ use haggis::gfx::scene::Scene;
 use haggis::simulation::traits::Simulation;
 use haggis::ui::default_transform_panel;
 use imgui::Ui;
-use std::time::Instant;
 use std::collections::VecDeque;
+use std::time::Instant;
 
 /// Simple particle representation
 #[derive(Clone)]
@@ -54,16 +54,16 @@ impl PerformanceMetrics {
 
     fn record_frame(&mut self, frame_time: f32, update_time: f32, particle_count: usize) {
         const MAX_SAMPLES: usize = 120; // 2 seconds at 60 FPS
-        
+
         self.frame_times.push_back(frame_time);
         self.update_times.push_back(update_time);
         self.last_update_time = update_time;
-        
+
         if self.frame_times.len() > MAX_SAMPLES {
             self.frame_times.pop_front();
             self.update_times.pop_front();
         }
-        
+
         // Calculate particles per second
         self.particles_per_second = if frame_time > 0.0 {
             (particle_count as f32) / frame_time
@@ -76,8 +76,13 @@ impl PerformanceMetrics {
         if self.frame_times.is_empty() {
             0.0
         } else {
-            let avg_frame_time = self.frame_times.iter().sum::<f32>() / self.frame_times.len() as f32;
-            if avg_frame_time > 0.0 { 1.0 / avg_frame_time } else { 0.0 }
+            let avg_frame_time =
+                self.frame_times.iter().sum::<f32>() / self.frame_times.len() as f32;
+            if avg_frame_time > 0.0 {
+                1.0 / avg_frame_time
+            } else {
+                0.0
+            }
         }
     }
 
@@ -145,7 +150,7 @@ impl SimpleParticleSystemCPU {
                 active: false,
             });
         }
-        
+
         // Set the particle data
         self.particles[index] = Particle {
             position,
@@ -213,7 +218,7 @@ impl SimpleParticleSystemCPU {
                 if object.name == "ground_plane" {
                     continue;
                 }
-                
+
                 if particle.active {
                     object.ui_transform.position = [
                         particle.position.x,
@@ -228,9 +233,13 @@ impl SimpleParticleSystemCPU {
                 }
             }
         }
-        
+
         // Ensure ground plane stays in place and visible
-        if let Some(ground) = scene.objects.iter_mut().find(|obj| obj.name == "ground_plane") {
+        if let Some(ground) = scene
+            .objects
+            .iter_mut()
+            .find(|obj| obj.name == "ground_plane")
+        {
             ground.ui_transform.position = [0.0, 0.0, 0.0];
             ground.apply_ui_transform();
             ground.visible = true;
@@ -278,7 +287,8 @@ impl Simulation for SimpleParticleSystemCPU {
         // Record performance metrics
         let update_time = update_start.elapsed().as_secs_f32();
         let active_count = self.particles.iter().filter(|p| p.active).count();
-        self.metrics.record_frame(delta_time, update_time, active_count);
+        self.metrics
+            .record_frame(delta_time, update_time, active_count);
     }
 
     fn render_ui(&mut self, ui: &Ui) {
@@ -302,13 +312,19 @@ impl Simulation for SimpleParticleSystemCPU {
                     self.particles.iter().filter(|p| p.active).count()
                 ));
                 ui.text(&format!("Time: {:.2}s", self.time));
-                
+
                 // Performance metrics
                 ui.spacing();
                 ui.text("CPU Performance:");
                 ui.text(&format!("  FPS: {:.1}", self.metrics.get_avg_fps()));
-                ui.text(&format!("  Update Time: {:.2}ms", self.metrics.get_avg_update_time_ms()));
-                ui.text(&format!("  Particles/sec: {:.0}", self.metrics.particles_per_second));
+                ui.text(&format!(
+                    "  Update Time: {:.2}ms",
+                    self.metrics.get_avg_update_time_ms()
+                ));
+                ui.text(&format!(
+                    "  Particles/sec: {:.0}",
+                    self.metrics.particles_per_second
+                ));
                 ui.spacing();
 
                 // Physics controls
@@ -381,7 +397,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .app_state
         .scene
         .add_material_rgb("particle_blue", 0.2, 0.6, 1.0, 0.8, 0.3);
-    
+
     haggis
         .app_state
         .scene

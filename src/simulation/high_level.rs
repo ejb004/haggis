@@ -35,7 +35,7 @@
 
 use crate::gfx::scene::Scene;
 use crate::simulation::traits::Simulation;
-use cgmath::{Vector3, InnerSpace};
+use cgmath::{InnerSpace, Vector3};
 use rand::Rng;
 
 /// High-level particle system with automatic resource management
@@ -69,20 +69,35 @@ pub enum ForceField {
     /// Gravity force (downward)
     Gravity { acceleration: Vector3<f32> },
     /// Point attractor/repulsor
-    Point { position: Vector3<f32>, strength: f32 },
+    Point {
+        position: Vector3<f32>,
+        strength: f32,
+    },
     /// Radial force (explosion/implosion)
     Radial { center: Vector3<f32>, strength: f32 },
     /// Vortex force (spiral)
-    Vortex { center: Vector3<f32>, axis: Vector3<f32>, strength: f32 },
+    Vortex {
+        center: Vector3<f32>,
+        axis: Vector3<f32>,
+        strength: f32,
+    },
 }
 
 /// Constraint types for particle behavior
 #[derive(Clone, Debug)]
 pub enum Constraint {
     /// Box boundary constraint
-    Box { min: Vector3<f32>, max: Vector3<f32>, bounce: f32 },
+    Box {
+        min: Vector3<f32>,
+        max: Vector3<f32>,
+        bounce: f32,
+    },
     /// Spherical boundary constraint
-    Sphere { center: Vector3<f32>, radius: f32, bounce: f32 },
+    Sphere {
+        center: Vector3<f32>,
+        radius: f32,
+        bounce: f32,
+    },
     /// Ground plane constraint
     Ground { height: f32, bounce: f32 },
     /// Maximum velocity constraint
@@ -174,7 +189,7 @@ impl ParticleSystem {
     /// Updates the particle system
     fn update_cpu(&mut self, delta_time: f32) {
         let scaled_dt = delta_time * self.settings.time_scale;
-        
+
         for particle in &mut self.particles {
             if !particle.active {
                 continue;
@@ -206,7 +221,11 @@ impl ParticleSystem {
                             Vector3::new(0.0, 0.0, 0.0)
                         }
                     }
-                    ForceField::Vortex { center, axis, strength } => {
+                    ForceField::Vortex {
+                        center,
+                        axis,
+                        strength,
+                    } => {
                         let to_particle = particle.position - *center;
                         let axis_component = axis.dot(to_particle) * *axis;
                         let radial = to_particle - axis_component;
@@ -236,14 +255,19 @@ impl ParticleSystem {
                             }
                         }
                     }
-                    Constraint::Sphere { center, radius, bounce } => {
+                    Constraint::Sphere {
+                        center,
+                        radius,
+                        bounce,
+                    } => {
                         let to_center = particle.position - *center;
                         let distance = to_center.magnitude();
                         if distance > *radius {
                             let direction = to_center.normalize();
                             particle.position = *center + direction * *radius;
                             let velocity_along_normal = particle.velocity.dot(direction);
-                            particle.velocity -= direction * velocity_along_normal * (1.0 + *bounce);
+                            particle.velocity -=
+                                direction * velocity_along_normal * (1.0 + *bounce);
                         }
                     }
                     Constraint::Ground { height, bounce } => {
@@ -388,9 +412,9 @@ impl ParticleSystemBuilder {
 
     /// Builds the particle system
     pub fn build(self) -> ParticleSystem {
-        let should_use_gpu = self.use_gpu.unwrap_or_else(|| {
-            self.settings.count > self.settings.gpu_threshold
-        });
+        let should_use_gpu = self
+            .use_gpu
+            .unwrap_or_else(|| self.settings.count > self.settings.gpu_threshold);
 
         let mut particles = Vec::with_capacity(self.settings.count);
         for _ in 0..self.settings.count {
@@ -468,7 +492,10 @@ impl Simulation for ParticleSimulation {
         // Update scene objects based on particle positions
         // This is where we would sync particle positions to scene objects
         // For now, we'll just update the first few objects if they exist
-        let active_particles: Vec<_> = self.system.particles.iter()
+        let active_particles: Vec<_> = self
+            .system
+            .particles
+            .iter()
             .filter(|p| p.active)
             .take(scene.objects.len())
             .collect();
@@ -486,17 +513,20 @@ impl Simulation for ParticleSimulation {
             .build(|| {
                 ui.text(format!("Active Particles: {}", self.system.active_count()));
                 ui.text(format!("Total Particles: {}", self.system.particles.len()));
-                
+
                 ui.separator();
-                
+
                 ui.text("Settings:");
-                ui.text(format!("Time Scale: {:.2}", self.system.settings.time_scale));
+                ui.text(format!(
+                    "Time Scale: {:.2}",
+                    self.system.settings.time_scale
+                ));
                 ui.text(format!("Damping: {:.2}", self.system.settings.damping));
                 ui.text(format!("Forces: {}", self.system.forces.len()));
                 ui.text(format!("Constraints: {}", self.system.constraints.len()));
-                
+
                 ui.separator();
-                
+
                 if ui.button("Reset Particles") {
                     for particle in &mut self.system.particles {
                         particle.active = true;

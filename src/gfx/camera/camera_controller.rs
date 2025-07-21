@@ -102,7 +102,6 @@ impl CameraController {
         }
     }
 
-
     /// Returns true if currently panning
     pub fn is_panning(&self) -> bool {
         self.is_mouse_pressed && self.is_shift_held

@@ -18,10 +18,10 @@
 
 use crate::gfx::scene::Scene;
 use crate::simulation::traits::Simulation;
-use wgpu::{Device, Queue};
-use wgpu::util::DeviceExt;
 use std::collections::HashMap;
 use std::time::Instant;
+use wgpu::util::DeviceExt;
+use wgpu::{Device, Queue};
 
 /// Extension trait for the base Simulation trait
 pub trait SimulationExt: Simulation {
@@ -169,15 +169,15 @@ impl<T: Simulation> ManagedSimulation<T> {
     fn update_timing(&mut self, delta_time: f32) {
         self.timing_info.total_updates += 1;
         self.timing_info.last_update_time = delta_time;
-        
+
         // Calculate running average
         let alpha = 0.1; // Smoothing factor
-        self.timing_info.average_update_time = 
+        self.timing_info.average_update_time =
             alpha * delta_time + (1.0 - alpha) * self.timing_info.average_update_time;
-        
+
         // Calculate updates per second
         if delta_time > 0.0 {
-            self.timing_info.updates_per_second = 
+            self.timing_info.updates_per_second =
                 alpha * (1.0 / delta_time) + (1.0 - alpha) * self.timing_info.updates_per_second;
         }
     }
@@ -202,31 +202,40 @@ impl<T: Simulation + 'static> Simulation for ManagedSimulation<T> {
 
     fn update(&mut self, delta_time: f32, scene: &mut Scene) {
         let start_time = Instant::now();
-        
+
         self.simulation.update(delta_time, scene);
-        
+
         let elapsed = start_time.elapsed().as_secs_f32();
         self.update_timing(elapsed);
-        
+
         if self.debug_mode && elapsed > 0.016 {
-            println!("Warning: Simulation update took {:.3}ms (>16ms)", elapsed * 1000.0);
+            println!(
+                "Warning: Simulation update took {:.3}ms (>16ms)",
+                elapsed * 1000.0
+            );
         }
     }
 
     fn render_ui(&mut self, ui: &imgui::Ui) {
         // Render the wrapped simulation's UI
         self.simulation.render_ui(ui);
-        
+
         // Add performance monitoring UI if in debug mode
         if self.debug_mode {
             ui.window(&format!("{} - Performance", self.simulation.name()))
                 .size([300.0, 150.0], imgui::Condition::FirstUseEver)
                 .build(|| {
                     ui.text(format!("Updates: {}", self.timing_info.total_updates));
-                    ui.text(format!("Last: {:.3}ms", self.timing_info.last_update_time * 1000.0));
-                    ui.text(format!("Avg: {:.3}ms", self.timing_info.average_update_time * 1000.0));
+                    ui.text(format!(
+                        "Last: {:.3}ms",
+                        self.timing_info.last_update_time * 1000.0
+                    ));
+                    ui.text(format!(
+                        "Avg: {:.3}ms",
+                        self.timing_info.average_update_time * 1000.0
+                    ));
                     ui.text(format!("FPS: {:.1}", self.timing_info.updates_per_second));
-                    
+
                     if self.timing_info.average_update_time > 0.016 {
                         ui.text_colored([1.0, 1.0, 0.0, 1.0], "Performance Warning!");
                     }
@@ -309,15 +318,20 @@ impl GpuResourceManager {
     }
 
     /// Creates a buffer with the given name and data
-    pub fn create_buffer<T: bytemuck::Pod>(&mut self, name: &str, data: &[T], usage: wgpu::BufferUsages) -> Result<(), String> {
+    pub fn create_buffer<T: bytemuck::Pod>(
+        &mut self,
+        name: &str,
+        data: &[T],
+        usage: wgpu::BufferUsages,
+    ) -> Result<(), String> {
         let device = self.device.as_ref().ok_or("Device not initialized")?;
-        
+
         let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some(name),
             contents: bytemuck::cast_slice(data),
             usage,
         });
-        
+
         self.buffers.insert(name.to_string(), buffer);
         Ok(())
     }
@@ -331,20 +345,24 @@ impl GpuResourceManager {
     pub fn update_buffer<T: bytemuck::Pod>(&self, name: &str, data: &[T]) -> Result<(), String> {
         let queue = self.queue.as_ref().ok_or("Queue not initialized")?;
         let buffer = self.buffers.get(name).ok_or("Buffer not found")?;
-        
+
         queue.write_buffer(buffer, 0, bytemuck::cast_slice(data));
         Ok(())
     }
 
     /// Creates a compute pipeline
-    pub fn create_compute_pipeline(&mut self, name: &str, shader_source: &str) -> Result<(), String> {
+    pub fn create_compute_pipeline(
+        &mut self,
+        name: &str,
+        shader_source: &str,
+    ) -> Result<(), String> {
         let device = self.device.as_ref().ok_or("Device not initialized")?;
-        
+
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some(&format!("{}_shader", name)),
             source: wgpu::ShaderSource::Wgsl(shader_source.into()),
         });
-        
+
         let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
             label: Some(&format!("{}_pipeline", name)),
             layout: None,
@@ -353,7 +371,7 @@ impl GpuResourceManager {
             cache: None,
             compilation_options: Default::default(),
         });
-        
+
         self.pipelines.insert(name.to_string(), pipeline);
         Ok(())
     }
@@ -395,7 +413,7 @@ impl BatchProcessor {
         F: FnMut(&mut [T]),
     {
         self.total_items = items.len();
-        
+
         for chunk in items.chunks_mut(self.batch_size) {
             processor(chunk);
         }
@@ -430,10 +448,13 @@ impl SimulationProfiler {
         if !self.enabled {
             return;
         }
-        
-        let samples = self.timings.entry(name.to_string()).or_insert_with(Vec::new);
+
+        let samples = self
+            .timings
+            .entry(name.to_string())
+            .or_insert_with(Vec::new);
         samples.push(duration);
-        
+
         if samples.len() > self.max_samples {
             samples.remove(0);
         }
@@ -441,19 +462,22 @@ impl SimulationProfiler {
 
     /// Gets average timing for a named section
     pub fn get_average(&self, name: &str) -> Option<f32> {
-        self.timings.get(name).map(|samples| {
-            samples.iter().sum::<f32>() / samples.len() as f32
-        })
+        self.timings
+            .get(name)
+            .map(|samples| samples.iter().sum::<f32>() / samples.len() as f32)
     }
 
     /// Gets all timing statistics
     pub fn get_all_stats(&self) -> HashMap<String, (f32, f32, f32)> {
-        self.timings.iter().map(|(name, samples)| {
-            let avg = samples.iter().sum::<f32>() / samples.len() as f32;
-            let min = samples.iter().copied().fold(f32::INFINITY, f32::min);
-            let max = samples.iter().copied().fold(f32::NEG_INFINITY, f32::max);
-            (name.clone(), (avg, min, max))
-        }).collect()
+        self.timings
+            .iter()
+            .map(|(name, samples)| {
+                let avg = samples.iter().sum::<f32>() / samples.len() as f32;
+                let min = samples.iter().copied().fold(f32::INFINITY, f32::min);
+                let max = samples.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+                (name.clone(), (avg, min, max))
+            })
+            .collect()
     }
 
     /// Clears all timing data
@@ -470,15 +494,13 @@ impl SimulationProfiler {
 /// Convenience macros for timing simulation code
 #[macro_export]
 macro_rules! time_section {
-    ($profiler:expr, $name:expr, $code:block) => {
-        {
-            let start = std::time::Instant::now();
-            let result = $code;
-            let elapsed = start.elapsed().as_secs_f32();
-            $profiler.record($name, elapsed);
-            result
-        }
-    };
+    ($profiler:expr, $name:expr, $code:block) => {{
+        let start = std::time::Instant::now();
+        let result = $code;
+        let elapsed = start.elapsed().as_secs_f32();
+        $profiler.record($name, elapsed);
+        result
+    }};
 }
 
 /// Helper for creating common simulation patterns
@@ -487,26 +509,35 @@ pub mod patterns {
     use crate::simulation::high_level::ParticleSystem;
 
     /// Creates a physics-based particle system with timing
-    pub fn timed_particles(name: &str, count: usize) -> ManagedSimulation<crate::simulation::high_level::ParticleSimulation> {
+    pub fn timed_particles(
+        name: &str,
+        count: usize,
+    ) -> ManagedSimulation<crate::simulation::high_level::ParticleSimulation> {
         let particles = ParticleSystem::new()
             .with_count(count)
             .with_gravity([0.0, 0.0, -9.8])
             .with_ground(0.0)
             .build();
-        
-        let simulation = crate::simulation::high_level::ParticleSimulation::new(name.to_string(), particles);
+
+        let simulation =
+            crate::simulation::high_level::ParticleSimulation::new(name.to_string(), particles);
         ManagedSimulation::new(simulation).with_debug(true)
     }
 
     /// Creates a wind-affected particle system
-    pub fn wind_simulation(name: &str, count: usize, wind_strength: f32) -> ManagedSimulation<crate::simulation::high_level::ParticleSimulation> {
+    pub fn wind_simulation(
+        name: &str,
+        count: usize,
+        wind_strength: f32,
+    ) -> ManagedSimulation<crate::simulation::high_level::ParticleSimulation> {
         let particles = ParticleSystem::new()
             .with_count(count)
             .with_force([wind_strength, 0.0, 0.0])
             .with_bounds([-10.0, 10.0], [-10.0, 10.0], [0.0, 20.0])
             .build();
-        
-        let simulation = crate::simulation::high_level::ParticleSimulation::new(name.to_string(), particles);
+
+        let simulation =
+            crate::simulation::high_level::ParticleSimulation::new(name.to_string(), particles);
         ManagedSimulation::new(simulation).with_debug(true)
     }
 }

@@ -54,16 +54,21 @@ impl MaterialBindings {
         }
     }
 
-    pub fn create_bind_group(&mut self, device: &Device, ubo: &MaterialUBO, texture: Option<&TextureResource>) {
+    pub fn create_bind_group(
+        &mut self,
+        device: &Device,
+        ubo: &MaterialUBO,
+        texture: Option<&TextureResource>,
+    ) {
         // Create default texture if none provided
         let default_texture = if texture.is_none() {
             Some(Self::create_default_texture(device))
         } else {
             None
         };
-        
+
         let tex_to_use = texture.unwrap_or_else(|| default_texture.as_ref().unwrap());
-        
+
         let builder = BindGroupBuilder::new(&self.bind_group_layout)
             .resource(ubo.binding_resource())
             .resource(wgpu::BindingResource::TextureView(&tex_to_use.view))
@@ -139,7 +144,7 @@ pub struct Material {
     // GPU resources - shared by all objects using this material
     material_ubo: Option<MaterialUBO>,
     material_bindings: Option<MaterialBindings>,
-    
+
     // Texture support
     pub diffuse_texture: Option<TextureResource>,
 }
@@ -241,7 +246,11 @@ impl Material {
         if self.material_bindings.is_none() {
             let mut bindings = MaterialBindings::new(device);
 
-            bindings.create_bind_group(device, self.material_ubo.as_ref().unwrap(), self.diffuse_texture.as_ref());
+            bindings.create_bind_group(
+                device,
+                self.material_ubo.as_ref().unwrap(),
+                self.diffuse_texture.as_ref(),
+            );
 
             self.material_bindings = Some(bindings);
         }
@@ -410,7 +419,6 @@ pub struct MaterialBuilder<'a> {
 }
 
 impl<'a> MaterialBuilder<'a> {
-
     /// Sets the base color
     pub fn with_color(self, r: f32, g: f32, b: f32) -> Self {
         if let Some(material) = self.manager.get_material_mut(&self.material_id) {

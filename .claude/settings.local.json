@@ -24,7 +24,9 @@
       "Bash(timeout:*)",
       "Bash(true)",
       "Bash(gtimeout 3 cargo run --example cut_plane_demo)",
-      "Bash(gtimeout 10 cargo run --example cut_plane_demo)"
+      "Bash(gtimeout 10 cargo run --example cut_plane_demo)",
+      "Bash(cargo fmt:*)",
+      "Bash(cargo clippy:*)"
     ],
     "deny": []
   }

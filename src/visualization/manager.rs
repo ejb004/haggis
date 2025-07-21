@@ -4,7 +4,7 @@
 //! the main engine loop and UI system.
 
 use super::traits::VisualizationComponent;
-use crate::gfx::{scene::Scene, rendering::VisualizationPlane};
+use crate::gfx::{rendering::VisualizationPlane, scene::Scene};
 use imgui::Ui;
 use std::collections::HashMap;
 use wgpu::{Device, Queue};
@@ -68,13 +68,19 @@ impl VisualizationManager {
     }
 
     /// Update both visualization components and their material textures
-    pub fn update_with_scene(&mut self, delta_time: f32, scene: &mut Scene, device: Option<&Device>, queue: Option<&Queue>) {
+    pub fn update_with_scene(
+        &mut self,
+        delta_time: f32,
+        scene: &mut Scene,
+        device: Option<&Device>,
+        queue: Option<&Queue>,
+    ) {
         // Update components first
         self.update(delta_time, device, queue);
-        
+
         // Update scene objects
         self.update_scene_objects(scene);
-        
+
         // Update material textures if device and queue are available
         if let (Some(device), Some(queue)) = (device, queue) {
             self.update_material_textures(scene, device, queue);
@@ -97,7 +103,7 @@ impl VisualizationManager {
             if component.is_enabled() {
                 // Set position for this component's panel
                 let window_name = format!("{} Visualization", component.name());
-                
+
                 ui.window(&window_name)
                     .size([panel_width, 300.0], imgui::Condition::FirstUseEver)
                     .position([x_position, y_offset], imgui::Condition::FirstUseEver)
@@ -123,7 +129,10 @@ impl VisualizationManager {
 
         ui.window("Visualization Manager")
             .size([panel_width, 200.0], imgui::Condition::FirstUseEver)
-            .position([x_position, display_size[1] - 220.0], imgui::Condition::FirstUseEver)
+            .position(
+                [x_position, display_size[1] - 220.0],
+                imgui::Condition::FirstUseEver,
+            )
             .resizable(true)
             .collapsible(true)
             .build(|| {
@@ -156,7 +165,10 @@ impl VisualizationManager {
     }
 
     /// Get a mutable reference to a specific component
-    pub fn get_component_mut(&mut self, name: &str) -> Option<&mut Box<dyn VisualizationComponent>> {
+    pub fn get_component_mut(
+        &mut self,
+        name: &str,
+    ) -> Option<&mut Box<dyn VisualizationComponent>> {
         self.components.get_mut(name)
     }
 
@@ -199,15 +211,18 @@ impl VisualizationManager {
     /// Get visualization planes for rendering (bypasses scene objects)
     pub fn get_visualization_planes(&self) -> Vec<VisualizationPlane> {
         let mut planes = Vec::new();
-        
+
         if !self.enabled {
             return planes;
         }
-        
+
         for (_name, component) in &self.components {
             if component.is_enabled() {
                 // Try to convert the component to a visualization plane
-                if let Some(cut_plane) = component.as_any().downcast_ref::<super::cut_plane_2d::CutPlane2D>() {
+                if let Some(cut_plane) = component
+                    .as_any()
+                    .downcast_ref::<super::cut_plane_2d::CutPlane2D>()
+                {
                     if let Some(plane) = cut_plane.to_visualization_plane() {
                         planes.push(plane);
                     }

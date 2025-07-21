@@ -3,7 +3,7 @@
 //! Manages the lifecycle of user simulations and integrates them with
 //! the main engine loop.
 
-use super::{traits::Simulation, base_simulation::BaseSimulation};
+use super::{base_simulation::BaseSimulation, traits::Simulation};
 use crate::gfx::scene::Scene;
 use imgui::Ui;
 use wgpu::{Device, Queue};
@@ -83,7 +83,7 @@ impl SimulationManager {
                     if let (Some(device), Some(queue)) = (device, queue) {
                         simulation.update_gpu(device, queue, fixed_dt);
                         simulation.apply_gpu_results_to_scene(device, scene);
-                        
+
                         // Material texture updates for visualizations will be handled separately
                     }
 
@@ -97,7 +97,7 @@ impl SimulationManager {
                 if let (Some(device), Some(queue)) = (device, queue) {
                     simulation.update_gpu(device, queue, scaled_delta);
                     simulation.apply_gpu_results_to_scene(device, scene);
-                    
+
                     // Material texture updates for visualizations will be handled separately
                 }
             }

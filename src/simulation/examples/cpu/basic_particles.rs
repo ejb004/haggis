@@ -3,7 +3,7 @@
 //! This example demonstrates the simplest possible particle system using
 //! the high-level API. Perfect for beginners who want to get started quickly.
 
-use crate::simulation::high_level::{ParticleSystem, ParticleSimulation};
+use crate::simulation::high_level::{ParticleSimulation, ParticleSystem};
 
 /// Creates a simple CPU particle system with gravity
 pub fn create_basic_particles() -> ParticleSimulation {
@@ -22,7 +22,7 @@ pub fn create_fountain() -> ParticleSimulation {
     let particles = ParticleSystem::new()
         .with_count(1000)
         .with_gravity([0.0, 0.0, -15.0])
-        .with_force([0.0, 0.0, 8.0])  // Upward force
+        .with_force([0.0, 0.0, 8.0]) // Upward force
         .with_ground(-1.0)
         .with_damping(0.98)
         .build();
@@ -34,7 +34,7 @@ pub fn create_fountain() -> ParticleSimulation {
 pub fn create_wind_particles() -> ParticleSimulation {
     let particles = ParticleSystem::new()
         .with_count(300)
-        .with_force([5.0, 0.0, 0.0])  // Wind force
+        .with_force([5.0, 0.0, 0.0]) // Wind force
         .with_gravity([0.0, 0.0, -5.0])
         .with_bounds([-10.0, 10.0], [-10.0, 10.0], [0.0, 15.0])
         .with_damping(0.99)
@@ -47,8 +47,8 @@ pub fn create_wind_particles() -> ParticleSimulation {
 pub fn create_explosion() -> ParticleSimulation {
     let particles = ParticleSystem::explosion(
         800,
-        [0.0, 0.0, 5.0],  // Center position
-        50.0,             // Explosion strength
+        [0.0, 0.0, 5.0], // Center position
+        50.0,            // Explosion strength
     );
 
     ParticleSimulation::new("Explosion".to_string(), particles)
@@ -57,9 +57,11 @@ pub fn create_explosion() -> ParticleSimulation {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::simulation::traits::Simulation;
+    use crate::gfx::camera::{
+        camera_controller::CameraController, camera_utils::CameraManager, orbit_camera::OrbitCamera,
+    };
     use crate::gfx::scene::Scene;
-    use crate::gfx::camera::{camera_utils::CameraManager, orbit_camera::OrbitCamera, camera_controller::CameraController};
+    use crate::simulation::traits::Simulation;
     use cgmath::Vector3;
 
     #[test]

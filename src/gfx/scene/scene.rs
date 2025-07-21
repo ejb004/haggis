@@ -5,7 +5,7 @@ use crate::gfx::{
     resources::material::{Material, MaterialManager},
 };
 
-use super::{object::Object, object::Mesh};
+use super::{object::Mesh, object::Object};
 
 /// Main scene containing objects, materials, and camera
 pub struct Scene {
@@ -335,8 +335,11 @@ impl Scene {
         size: f32,
         material_name: &str,
     ) -> usize {
-        println!("Creating plane object: {} ({} at {})", name, orientation, position);
-        
+        println!(
+            "Creating plane object: {} ({} at {})",
+            name, orientation, position
+        );
+
         // Create plane geometry based on orientation
         let (positions, normals, indices) = match orientation {
             "XY" => create_xy_plane_geometry(position, size),
@@ -347,17 +350,17 @@ impl Scene {
 
         let mesh = Mesh::new(positions, normals, indices);
         let mut object = Object::new(vec![mesh]);
-        
+
         // Set object properties
         let unique_name = self.ensure_unique_name(name);
         object.set_name(unique_name);
         object.set_material(material_name);
         object.visible = true;
-        
+
         // Add to scene
         self.objects.push(object);
         let object_index = self.objects.len() - 1;
-        
+
         println!("Plane object created at index {}", object_index);
         object_index
     }
@@ -377,82 +380,61 @@ pub struct SceneStatistics {
 /// Creates an XY plane (normal along Z axis)
 fn create_xy_plane_geometry(z_position: f32, size: f32) -> (Vec<f32>, Vec<f32>, Vec<u32>) {
     let half_size = size / 2.0;
-    
+
     // 4 vertices for a quad
     let positions = vec![
         -half_size, -half_size, z_position, // Bottom-left
-         half_size, -half_size, z_position, // Bottom-right
-         half_size,  half_size, z_position, // Top-right
-        -half_size,  half_size, z_position, // Top-left
+        half_size, -half_size, z_position, // Bottom-right
+        half_size, half_size, z_position, // Top-right
+        -half_size, half_size, z_position, // Top-left
     ];
-    
+
     // All normals point up (positive Z)
-    let normals = vec![
-        0.0, 0.0, 1.0,
-        0.0, 0.0, 1.0,
-        0.0, 0.0, 1.0,
-        0.0, 0.0, 1.0,
-    ];
-    
+    let normals = vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0];
+
     // Two triangles making a quad
     let indices = vec![
-        0, 1, 2,  // First triangle
-        0, 2, 3,  // Second triangle
+        0, 1, 2, // First triangle
+        0, 2, 3, // Second triangle
     ];
-    
+
     (positions, normals, indices)
 }
 
 /// Creates an XZ plane (normal along Y axis)
 fn create_xz_plane_geometry(y_position: f32, size: f32) -> (Vec<f32>, Vec<f32>, Vec<u32>) {
     let half_size = size / 2.0;
-    
+
     let positions = vec![
         -half_size, y_position, -half_size, // Bottom-left
-         half_size, y_position, -half_size, // Bottom-right
-         half_size, y_position,  half_size, // Top-right
-        -half_size, y_position,  half_size, // Top-left
+        half_size, y_position, -half_size, // Bottom-right
+        half_size, y_position, half_size, // Top-right
+        -half_size, y_position, half_size, // Top-left
     ];
-    
+
     // All normals point forward (positive Y)
-    let normals = vec![
-        0.0, 1.0, 0.0,
-        0.0, 1.0, 0.0,
-        0.0, 1.0, 0.0,
-        0.0, 1.0, 0.0,
-    ];
-    
-    let indices = vec![
-        0, 1, 2,
-        0, 2, 3,
-    ];
-    
+    let normals = vec![0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0];
+
+    let indices = vec![0, 1, 2, 0, 2, 3];
+
     (positions, normals, indices)
 }
 
 /// Creates a YZ plane (normal along X axis)
 fn create_yz_plane_geometry(x_position: f32, size: f32) -> (Vec<f32>, Vec<f32>, Vec<u32>) {
     let half_size = size / 2.0;
-    
+
     let positions = vec![
         x_position, -half_size, -half_size, // Bottom-left
-        x_position,  half_size, -half_size, // Bottom-right
-        x_position,  half_size,  half_size, // Top-right
-        x_position, -half_size,  half_size, // Top-left
+        x_position, half_size, -half_size, // Bottom-right
+        x_position, half_size, half_size, // Top-right
+        x_position, -half_size, half_size, // Top-left
     ];
-    
+
     // All normals point right (positive X)
-    let normals = vec![
-        1.0, 0.0, 0.0,
-        1.0, 0.0, 0.0,
-        1.0, 0.0, 0.0,
-        1.0, 0.0, 0.0,
-    ];
-    
-    let indices = vec![
-        0, 1, 2,
-        0, 2, 3,
-    ];
-    
+    let normals = vec![1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0];
+
+    let indices = vec![0, 1, 2, 0, 2, 3];
+
     (positions, normals, indices)
 }

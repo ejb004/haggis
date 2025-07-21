@@ -62,11 +62,11 @@ pub mod traits;
 
 // New API layers
 pub mod high_level;
-pub mod mid_level;
 pub mod low_level;
+pub mod mid_level;
 
 // Re-export for convenience
 pub use base_simulation::BaseSimulation;
-pub use high_level::{ParticleSystem, ParticleSimulation, ForceField, Constraint};
-pub use mid_level::{ManagedSimulation, SimulationExt, GpuResourceManager};
-pub use low_level::{ComputeContext, RawGpuSimulation, GpuParticle};
+pub use high_level::{Constraint, ForceField, ParticleSimulation, ParticleSystem};
+pub use low_level::{ComputeContext, GpuParticle, RawGpuSimulation};
+pub use mid_level::{GpuResourceManager, ManagedSimulation, SimulationExt};

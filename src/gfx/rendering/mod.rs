@@ -12,4 +12,4 @@ pub mod visualization_renderer;
 pub use pipeline_manager::{PipelineConfig, PipelineManager, PipelineStats};
 pub use render_engine::RenderEngine;
 pub use render_pass_ext::RenderPassExt;
-pub use visualization_renderer::{VisualizationRenderer, VisualizationPlane};
+pub use visualization_renderer::{VisualizationPlane, VisualizationRenderer};

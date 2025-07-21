@@ -17,13 +17,13 @@
 //! cargo run --example performance_comparison_gpu
 //! ```
 
-use cgmath::{Vector3, InnerSpace};
+use cgmath::{InnerSpace, Vector3};
 use haggis::gfx::scene::Scene;
 use haggis::simulation::traits::Simulation;
 use haggis::ui::default_transform_panel;
 use imgui::Ui;
-use std::time::Instant;
 use std::collections::VecDeque;
+use std::time::Instant;
 
 // Advanced GPU compute shader for performance analysis
 const PERFORMANCE_ANALYSIS_SHADER: &str = r#"
@@ -327,19 +327,19 @@ struct GPUPerformanceMetrics {
     dispatch_times: VecDeque<f32>,
     memory_transfer_times: VecDeque<f32>,
     compute_times: VecDeque<f32>,
-    
+
     // GPU-specific metrics
     workgroup_count: u32,
     occupancy: f32,
     memory_bandwidth_utilization: f32,
     compute_utilization: f32,
-    
+
     // Performance counters from GPU
     force_calculations_per_frame: u32,
     neighbor_checks_per_frame: u32,
     boundary_collisions_per_frame: u32,
     integrations_per_frame: u32,
-    
+
     // Analysis
     bottleneck_analysis: String,
     gpu_optimization_suggestions: Vec<String>,
@@ -365,35 +365,39 @@ impl GPUPerformanceMetrics {
         }
     }
 
-    fn record_frame(&mut self, 
-                   frame_time: f32, 
-                   dispatch_time: f32, 
-                   memory_time: f32, 
-                   compute_time: f32,
-                   particle_count: usize,
-                   workgroup_size: u32) {
+    fn record_frame(
+        &mut self,
+        frame_time: f32,
+        dispatch_time: f32,
+        memory_time: f32,
+        compute_time: f32,
+        particle_count: usize,
+        workgroup_size: u32,
+    ) {
         const MAX_SAMPLES: usize = 300;
-        
+
         self.frame_times.push_back(frame_time);
         self.dispatch_times.push_back(dispatch_time);
         self.memory_transfer_times.push_back(memory_time);
         self.compute_times.push_back(compute_time);
-        
+
         if self.frame_times.len() > MAX_SAMPLES {
             self.frame_times.pop_front();
             self.dispatch_times.pop_front();
             self.memory_transfer_times.pop_front();
             self.compute_times.pop_front();
         }
-        
+
         // Calculate GPU-specific metrics
         self.workgroup_count = (particle_count as u32 + workgroup_size - 1) / workgroup_size;
-        self.occupancy = (particle_count as f32 / (self.workgroup_count as f32 * workgroup_size as f32)).min(1.0);
-        
+        self.occupancy = (particle_count as f32
+            / (self.workgroup_count as f32 * workgroup_size as f32))
+            .min(1.0);
+
         // Simulate GPU utilization metrics
         self.compute_utilization = (compute_time / frame_time).min(1.0);
         self.memory_bandwidth_utilization = (memory_time / frame_time).min(1.0);
-        
+
         self.analyze_gpu_bottlenecks();
     }
 
@@ -410,23 +414,34 @@ impl GPUPerformanceMetrics {
 
         if avg_memory > avg_compute * 2.0 {
             self.bottleneck_analysis = "Memory bandwidth bottleneck".to_string();
-            self.gpu_optimization_suggestions.push("Use shared memory for frequently accessed data".to_string());
-            self.gpu_optimization_suggestions.push("Optimize memory coalescing patterns".to_string());
-            self.gpu_optimization_suggestions.push("Consider data compression techniques".to_string());
+            self.gpu_optimization_suggestions
+                .push("Use shared memory for frequently accessed data".to_string());
+            self.gpu_optimization_suggestions
+                .push("Optimize memory coalescing patterns".to_string());
+            self.gpu_optimization_suggestions
+                .push("Consider data compression techniques".to_string());
         } else if self.occupancy < 0.5 {
             self.bottleneck_analysis = "Low GPU occupancy".to_string();
-            self.gpu_optimization_suggestions.push("Increase particle count for better occupancy".to_string());
-            self.gpu_optimization_suggestions.push("Optimize workgroup size".to_string());
-            self.gpu_optimization_suggestions.push("Consider workgroup merging strategies".to_string());
+            self.gpu_optimization_suggestions
+                .push("Increase particle count for better occupancy".to_string());
+            self.gpu_optimization_suggestions
+                .push("Optimize workgroup size".to_string());
+            self.gpu_optimization_suggestions
+                .push("Consider workgroup merging strategies".to_string());
         } else if avg_compute > avg_dispatch * 0.8 {
             self.bottleneck_analysis = "Compute bound workload".to_string();
-            self.gpu_optimization_suggestions.push("Optimize algorithm complexity".to_string());
-            self.gpu_optimization_suggestions.push("Use force approximation techniques".to_string());
-            self.gpu_optimization_suggestions.push("Implement spatial partitioning on GPU".to_string());
+            self.gpu_optimization_suggestions
+                .push("Optimize algorithm complexity".to_string());
+            self.gpu_optimization_suggestions
+                .push("Use force approximation techniques".to_string());
+            self.gpu_optimization_suggestions
+                .push("Implement spatial partitioning on GPU".to_string());
         } else {
             self.bottleneck_analysis = "Well-balanced GPU workload".to_string();
-            self.gpu_optimization_suggestions.push("Consider increasing problem size".to_string());
-            self.gpu_optimization_suggestions.push("Explore more complex force models".to_string());
+            self.gpu_optimization_suggestions
+                .push("Consider increasing problem size".to_string());
+            self.gpu_optimization_suggestions
+                .push("Explore more complex force models".to_string());
         }
     }
 
@@ -440,16 +455,20 @@ impl GPUPerformanceMetrics {
 
     fn get_avg_fps(&self) -> f32 {
         let avg_frame_time = self.get_avg_time(&self.frame_times);
-        if avg_frame_time > 0.0 { 1.0 / avg_frame_time } else { 0.0 }
+        if avg_frame_time > 0.0 {
+            1.0 / avg_frame_time
+        } else {
+            0.0
+        }
     }
 }
 
 /// Low-level GPU simulation with advanced performance analysis
 /// Note: This is a conceptual implementation for educational purposes
 struct LowLevelGPUSimulation {
-    particles: Vec<GPUParticle>,  // CPU shadow copy
+    particles: Vec<GPUParticle>, // CPU shadow copy
     metrics: GPUPerformanceMetrics,
-    
+
     // Simulation parameters
     gravity: Vector3<f32>,
     damping: f32,
@@ -459,22 +478,22 @@ struct LowLevelGPUSimulation {
     spawn_rate: f32,
     last_spawn: f32,
     running: bool,
-    
+
     // GPU optimization settings
     workgroup_size: u32,
     use_shared_memory: bool,
     force_approximation: bool,
     adaptive_quality: bool,
-    
+
     // GPU resource management (conceptual)
     gpu_initialized: bool,
     buffer_size: usize,
     compute_pipeline_created: bool,
-    
+
     // Performance analysis
     detailed_profiling: bool,
     show_gpu_details: bool,
-    
+
     // Force parameters
     separation_distance: f32,
     cohesion_strength: f32,
@@ -514,13 +533,27 @@ impl LowLevelGPUSimulation {
     fn initialize_gpu_resources(&mut self) {
         println!("Initializing GPU compute pipeline...");
         println!("  Workgroup size: {}", self.workgroup_size);
-        println!("  Shared memory: {}", if self.use_shared_memory { "Enabled" } else { "Disabled" });
-        println!("  Force approximation: {}", if self.force_approximation { "Enabled" } else { "Disabled" });
-        
+        println!(
+            "  Shared memory: {}",
+            if self.use_shared_memory {
+                "Enabled"
+            } else {
+                "Disabled"
+            }
+        );
+        println!(
+            "  Force approximation: {}",
+            if self.force_approximation {
+                "Enabled"
+            } else {
+                "Disabled"
+            }
+        );
+
         self.buffer_size = self.particles.len() * std::mem::size_of::<GPUParticle>();
         self.gpu_initialized = true;
         self.compute_pipeline_created = true;
-        
+
         println!("GPU resources initialized successfully");
     }
 
@@ -535,155 +568,161 @@ impl LowLevelGPUSimulation {
 
     fn gpu_compute_dispatch(&mut self, delta_time: f32) -> (f32, f32, f32) {
         let dispatch_start = Instant::now();
-        
+
         // Simulate GPU parameter upload
         let memory_start = Instant::now();
         std::thread::sleep(std::time::Duration::from_nanos(10000)); // Simulate memory transfer
         let memory_time = memory_start.elapsed().as_secs_f32();
-        
+
         // Simulate GPU compute execution
         let compute_start = Instant::now();
-        
+
         // For educational purposes, we'll simulate the GPU computation
         // In a real implementation, this would dispatch the compute shader
         self.simulate_gpu_compute(delta_time);
-        
+
         // Simulate compute execution time based on workload
         let base_compute_time = 0.0001; // Base GPU execution time
         let particle_overhead = self.particles.len() as f32 * 0.000001;
         let neighbor_overhead = if self.force_approximation {
-            self.particles.len() as f32 * 0.00001  // Reduced complexity
+            self.particles.len() as f32 * 0.00001 // Reduced complexity
         } else {
-            self.particles.len() as f32 * self.particles.len() as f32 * 0.0000001 // O(n²)
+            self.particles.len() as f32 * self.particles.len() as f32 * 0.0000001
+            // O(n²)
         };
-        
+
         let simulated_compute_time = base_compute_time + particle_overhead + neighbor_overhead;
         std::thread::sleep(std::time::Duration::from_secs_f32(simulated_compute_time));
-        
+
         let compute_time = compute_start.elapsed().as_secs_f32();
         let dispatch_time = dispatch_start.elapsed().as_secs_f32();
-        
+
         (dispatch_time, memory_time, compute_time)
     }
 
     fn simulate_gpu_compute(&mut self, delta_time: f32) {
         // Simulate the same physics as the compute shader would perform
         // This allows for functional equivalence while demonstrating concepts
-        
+
         // Reset performance counters
         self.metrics.force_calculations_per_frame = 0;
         self.metrics.neighbor_checks_per_frame = 0;
         self.metrics.boundary_collisions_per_frame = 0;
         self.metrics.integrations_per_frame = 0;
-        
+
         for i in 0..self.particles.len() {
             if !self.particles[i].active {
                 continue;
             }
-            
+
             // Reset forces
             self.particles[i].force_accumulator = Vector3::new(0.0, 0.0, 0.0);
-            
+
             // Apply gravity
             let mass = self.particles[i].mass;
             self.particles[i].force_accumulator += self.gravity * mass;
-            
+
             // Flocking behavior (simulating GPU neighbor search)
             let mut separation = Vector3::new(0.0, 0.0, 0.0);
             let mut alignment = Vector3::new(0.0, 0.0, 0.0);
             let mut cohesion = Vector3::new(0.0, 0.0, 0.0);
             let mut neighbor_count = 0;
-            
-            let search_step = if self.force_approximation { 
-                (self.particles.len() / 64).max(1) 
-            } else { 
-                1 
+
+            let search_step = if self.force_approximation {
+                (self.particles.len() / 64).max(1)
+            } else {
+                1
             };
-            
+
             for j in (0..self.particles.len()).step_by(search_step) {
                 if i == j || !self.particles[j].active {
                     continue;
                 }
-                
+
                 let distance_vec = self.particles[i].position - self.particles[j].position;
                 let distance = distance_vec.magnitude();
-                
+
                 self.metrics.neighbor_checks_per_frame += 1;
-                
+
                 if distance < self.separation_distance && distance > 0.0 {
                     separation += distance_vec.normalize() / distance;
                 }
-                
+
                 if distance < self.separation_distance * 3.0 && distance > 0.0 {
                     alignment += self.particles[j].velocity;
                     cohesion += self.particles[j].position;
                     neighbor_count += 1;
                 }
             }
-            
+
             // Apply flocking forces
             if neighbor_count > 0 {
                 alignment = alignment / neighbor_count as f32;
                 cohesion = (cohesion / neighbor_count as f32) - self.particles[i].position;
-                
+
                 if alignment.magnitude() > 0.0 {
-                    self.particles[i].force_accumulator += alignment.normalize() * self.alignment_strength;
+                    self.particles[i].force_accumulator +=
+                        alignment.normalize() * self.alignment_strength;
                 }
-                
+
                 if cohesion.magnitude() > 0.0 {
-                    self.particles[i].force_accumulator += cohesion.normalize() * self.cohesion_strength;
+                    self.particles[i].force_accumulator +=
+                        cohesion.normalize() * self.cohesion_strength;
                 }
             }
-            
+
             if separation.magnitude() > 0.0 {
-                self.particles[i].force_accumulator += separation.normalize() * self.separation_strength;
+                self.particles[i].force_accumulator +=
+                    separation.normalize() * self.separation_strength;
             }
-            
+
             self.metrics.force_calculations_per_frame += 1;
-            
+
             // Integration
             let mass = self.particles[i].mass;
             let force_accumulator = self.particles[i].force_accumulator;
             self.particles[i].acceleration = force_accumulator / mass;
-            
+
             let acceleration = self.particles[i].acceleration;
             self.particles[i].velocity += acceleration * delta_time;
             self.particles[i].velocity *= self.damping;
-            
+
             let velocity = self.particles[i].velocity;
             self.particles[i].position += velocity * delta_time;
-            
+
             // Boundary handling
             let mut boundary_collision = false;
-            
+
             if self.particles[i].position.y <= self.ground_level {
                 self.particles[i].position.y = self.ground_level;
                 self.particles[i].velocity.y = -self.particles[i].velocity.y * 0.8;
                 boundary_collision = true;
             }
-            
+
             if self.particles[i].position.x.abs() > self.boundary_size {
-                self.particles[i].position.x = self.boundary_size * self.particles[i].position.x.signum();
+                self.particles[i].position.x =
+                    self.boundary_size * self.particles[i].position.x.signum();
                 self.particles[i].velocity.x = -self.particles[i].velocity.x * 0.8;
                 boundary_collision = true;
             }
-            
+
             if self.particles[i].position.z.abs() > self.boundary_size {
-                self.particles[i].position.z = self.boundary_size * self.particles[i].position.z.signum();
+                self.particles[i].position.z =
+                    self.boundary_size * self.particles[i].position.z.signum();
                 self.particles[i].velocity.z = -self.particles[i].velocity.z * 0.8;
                 boundary_collision = true;
             }
-            
+
             if boundary_collision {
                 self.metrics.boundary_collisions_per_frame += 1;
             }
-            
+
             // Update lifetime
             self.particles[i].lifetime -= delta_time;
             if self.particles[i].lifetime <= 0.0 {
                 self.particles[i].active = false;
             }
-            
+
             self.metrics.integrations_per_frame += 1;
         }
     }
@@ -694,11 +733,7 @@ impl LowLevelGPUSimulation {
             for i in 0..spawn_count {
                 let angle = (i as f32 / spawn_count as f32) * 2.0 * std::f32::consts::PI;
                 let radius = 3.0;
-                let position = Vector3::new(
-                    radius * angle.cos(),
-                    8.0,
-                    radius * angle.sin(),
-                );
+                let position = Vector3::new(radius * angle.cos(), 8.0, radius * angle.sin());
                 let velocity = Vector3::new(
                     (angle.cos() * 0.5) + (i as f32 * 0.1) % 2.0 - 1.0,
                     2.0,
@@ -717,7 +752,7 @@ impl LowLevelGPUSimulation {
                 if object.name == "ground_plane" {
                     continue;
                 }
-                
+
                 if particle.active {
                     object.ui_transform.position = [
                         particle.position.x,
@@ -732,9 +767,13 @@ impl LowLevelGPUSimulation {
                 }
             }
         }
-        
+
         // Ensure ground plane stays in place and visible
-        if let Some(ground) = scene.objects.iter_mut().find(|obj| obj.name == "ground_plane") {
+        if let Some(ground) = scene
+            .objects
+            .iter_mut()
+            .find(|obj| obj.name == "ground_plane")
+        {
             ground.ui_transform.position = [0.0, 0.0, 0.0];
             ground.apply_ui_transform();
             ground.visible = true;
@@ -745,7 +784,7 @@ impl LowLevelGPUSimulation {
 impl Simulation for LowLevelGPUSimulation {
     fn initialize(&mut self, _scene: &mut Scene) {
         println!("Initializing Low-Level GPU Simulation with Performance Analysis...");
-        
+
         // Initialize with some particles
         for i in 0..20 {
             let angle = (i as f32 / 20.0) * 2.0 * std::f32::consts::PI;
@@ -758,11 +797,14 @@ impl Simulation for LowLevelGPUSimulation {
             let velocity = Vector3::new(0.0, 1.0, 0.0);
             self.spawn_particle(position, velocity);
         }
-        
+
         // Initialize GPU resources
         self.initialize_gpu_resources();
-        
-        println!("Initialized {} particles with low-level GPU management", self.particles.len());
+
+        println!(
+            "Initialized {} particles with low-level GPU management",
+            self.particles.len()
+        );
     }
 
     fn update(&mut self, delta_time: f32, scene: &mut Scene) {
@@ -771,16 +813,16 @@ impl Simulation for LowLevelGPUSimulation {
         }
 
         let frame_start = Instant::now();
-        
+
         self.time += delta_time;
         self.last_spawn += delta_time;
 
         // GPU compute dispatch with detailed timing
         let (dispatch_time, memory_time, compute_time) = self.gpu_compute_dispatch(delta_time);
-        
+
         // Spawn new particles
         self.spawn_particles_periodically();
-        
+
         // Sync to scene
         self.sync_to_scene(scene);
 
@@ -803,24 +845,41 @@ impl Simulation for LowLevelGPUSimulation {
             .build(|| {
                 ui.text("Low-Level GPU Implementation with Performance Analysis");
                 ui.separator();
-                
+
                 let active_count = self.particles.iter().filter(|p| p.active).count();
                 ui.text(&format!("Active Particles: {}", active_count));
                 ui.text(&format!("Total Particles: {}", self.particles.len()));
                 ui.text(&format!("Workgroups: {}", self.metrics.workgroup_count));
-                ui.text(&format!("GPU Occupancy: {:.1}%", self.metrics.occupancy * 100.0));
+                ui.text(&format!(
+                    "GPU Occupancy: {:.1}%",
+                    self.metrics.occupancy * 100.0
+                ));
                 ui.text(&format!("Time: {:.2}s", self.time));
                 ui.spacing();
-                
+
                 // GPU Performance overview
                 ui.text("GPU Performance:");
                 ui.text(&format!("  FPS: {:.1}", self.metrics.get_avg_fps()));
-                ui.text(&format!("  Dispatch Time: {:.3}ms", self.metrics.get_avg_time(&self.metrics.dispatch_times) * 1000.0));
-                ui.text(&format!("  Memory Transfer: {:.3}ms", self.metrics.get_avg_time(&self.metrics.memory_transfer_times) * 1000.0));
-                ui.text(&format!("  Compute Time: {:.3}ms", self.metrics.get_avg_time(&self.metrics.compute_times) * 1000.0));
-                ui.text(&format!("  Compute Utilization: {:.1}%", self.metrics.compute_utilization * 100.0));
+                ui.text(&format!(
+                    "  Dispatch Time: {:.3}ms",
+                    self.metrics.get_avg_time(&self.metrics.dispatch_times) * 1000.0
+                ));
+                ui.text(&format!(
+                    "  Memory Transfer: {:.3}ms",
+                    self.metrics
+                        .get_avg_time(&self.metrics.memory_transfer_times)
+                        * 1000.0
+                ));
+                ui.text(&format!(
+                    "  Compute Time: {:.3}ms",
+                    self.metrics.get_avg_time(&self.metrics.compute_times) * 1000.0
+                ));
+                ui.text(&format!(
+                    "  Compute Utilization: {:.1}%",
+                    self.metrics.compute_utilization * 100.0
+                ));
                 ui.spacing();
-                
+
                 // GPU optimization controls
                 ui.text("GPU Optimization:");
                 let mut workgroup_size = self.workgroup_size as i32;
@@ -831,7 +890,7 @@ impl Simulation for LowLevelGPUSimulation {
                 ui.checkbox("Force Approximation", &mut self.force_approximation);
                 ui.checkbox("Adaptive Quality", &mut self.adaptive_quality);
                 ui.spacing();
-                
+
                 // Control buttons
                 if ui.button("Show GPU Details") {
                     self.show_gpu_details = !self.show_gpu_details;
@@ -841,7 +900,7 @@ impl Simulation for LowLevelGPUSimulation {
                     self.gpu_initialized = false;
                     self.initialize_gpu_resources();
                 }
-                
+
                 ui.separator();
                 ui.text("Low-Level GPU Features:");
                 ui.text("✓ Custom compute shaders");
@@ -857,27 +916,51 @@ impl Simulation for LowLevelGPUSimulation {
             .build(|| {
                 ui.text("GPU Bottleneck Analysis:");
                 ui.separator();
-                
-                ui.text(&format!("Primary Bottleneck: {}", self.metrics.bottleneck_analysis));
+
+                ui.text(&format!(
+                    "Primary Bottleneck: {}",
+                    self.metrics.bottleneck_analysis
+                ));
                 ui.spacing();
-                
+
                 ui.text("GPU Optimization Suggestions:");
                 for suggestion in &self.metrics.gpu_optimization_suggestions {
                     ui.text(&format!("• {}", suggestion));
                 }
                 ui.spacing();
-                
+
                 ui.text("GPU Performance Counters:");
-                ui.text(&format!("Force Calculations: {}/frame", self.metrics.force_calculations_per_frame));
-                ui.text(&format!("Neighbor Checks: {}/frame", self.metrics.neighbor_checks_per_frame));
-                ui.text(&format!("Boundary Collisions: {}/frame", self.metrics.boundary_collisions_per_frame));
-                ui.text(&format!("Integrations: {}/frame", self.metrics.integrations_per_frame));
+                ui.text(&format!(
+                    "Force Calculations: {}/frame",
+                    self.metrics.force_calculations_per_frame
+                ));
+                ui.text(&format!(
+                    "Neighbor Checks: {}/frame",
+                    self.metrics.neighbor_checks_per_frame
+                ));
+                ui.text(&format!(
+                    "Boundary Collisions: {}/frame",
+                    self.metrics.boundary_collisions_per_frame
+                ));
+                ui.text(&format!(
+                    "Integrations: {}/frame",
+                    self.metrics.integrations_per_frame
+                ));
                 ui.spacing();
-                
+
                 ui.text("GPU Utilization:");
-                ui.text(&format!("Memory Bandwidth: {:.1}%", self.metrics.memory_bandwidth_utilization * 100.0));
-                ui.text(&format!("Compute Units: {:.1}%", self.metrics.compute_utilization * 100.0));
-                ui.text(&format!("Workgroup Efficiency: {:.1}%", self.metrics.occupancy * 100.0));
+                ui.text(&format!(
+                    "Memory Bandwidth: {:.1}%",
+                    self.metrics.memory_bandwidth_utilization * 100.0
+                ));
+                ui.text(&format!(
+                    "Compute Units: {:.1}%",
+                    self.metrics.compute_utilization * 100.0
+                ));
+                ui.text(&format!(
+                    "Workgroup Efficiency: {:.1}%",
+                    self.metrics.occupancy * 100.0
+                ));
             });
 
         // Optional GPU details panel
@@ -887,28 +970,45 @@ impl Simulation for LowLevelGPUSimulation {
                 .build(|| {
                     ui.text("Compute Shader Architecture:");
                     ui.separator();
-                    
+
                     ui.text(&format!("Workgroup Size: {}", self.workgroup_size));
-                    ui.text(&format!("Workgroups Dispatched: {}", self.metrics.workgroup_count));
+                    ui.text(&format!(
+                        "Workgroups Dispatched: {}",
+                        self.metrics.workgroup_count
+                    ));
                     ui.text(&format!("Total Threads: {}", self.particles.len()));
                     ui.text(&format!("Buffer Size: {} KB", self.buffer_size / 1024));
                     ui.spacing();
-                    
+
                     ui.text("Memory Hierarchy:");
                     ui.text("• Global Memory: Particle data");
                     ui.text("• Shared Memory: Neighbor cache");
                     ui.text("• Uniform Memory: Simulation parameters");
                     ui.text("• Atomic Counters: Performance data");
                     ui.spacing();
-                    
+
                     ui.text("Optimization Techniques:");
-                    ui.text(&format!("✓ Shared Memory: {}", if self.use_shared_memory { "Enabled" } else { "Disabled" }));
-                    ui.text(&format!("✓ Force Approximation: {}", if self.force_approximation { "Enabled" } else { "Disabled" }));
+                    ui.text(&format!(
+                        "✓ Shared Memory: {}",
+                        if self.use_shared_memory {
+                            "Enabled"
+                        } else {
+                            "Disabled"
+                        }
+                    ));
+                    ui.text(&format!(
+                        "✓ Force Approximation: {}",
+                        if self.force_approximation {
+                            "Enabled"
+                        } else {
+                            "Disabled"
+                        }
+                    ));
                     ui.text("✓ Memory coalescing");
                     ui.text("✓ Workgroup synchronization");
                     ui.text("✓ Atomic performance counters");
                     ui.spacing();
-                    
+
                     ui.text("Educational Value:");
                     ui.text("This demonstrates advanced GPU");
                     ui.text("compute optimization techniques");
@@ -950,7 +1050,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .app_state
         .scene
         .add_material_rgb("gpu_particle_advanced", 0.2, 1.0, 0.6, 0.7, 0.4);
-    
+
     haggis
         .app_state
         .scene
@@ -985,7 +1085,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .build(|| {
                 ui.text("Low-Level GPU Performance Framework");
                 ui.separator();
-                
+
                 ui.text("This example demonstrates:");
                 ui.text("• Custom WGSL compute shaders");
                 ui.text("• GPU memory hierarchy optimization");
@@ -993,7 +1093,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ui.text("• Comprehensive GPU profiling");
                 ui.text("• Bottleneck identification");
                 ui.spacing();
-                
+
                 ui.text("Advanced GPU Features:");
                 ui.text("• Shared memory utilization");
                 ui.text("• Atomic performance counters");
@@ -1001,14 +1101,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ui.text("• Compute pipeline analysis");
                 ui.text("• Adaptive quality control");
                 ui.spacing();
-                
+
                 ui.text("Performance Characteristics:");
                 ui.text("• Parallel execution scaling");
                 ui.text("• Memory bandwidth optimization");
                 ui.text("• Workgroup efficiency analysis");
                 ui.text("• GPU resource utilization");
                 ui.spacing();
-                
+
                 ui.text("Educational Comparison:");
                 ui.text("Compare with CPU implementation to");
                 ui.text("understand parallel vs sequential");
