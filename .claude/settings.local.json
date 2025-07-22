@@ -27,7 +27,8 @@
       "Bash(gtimeout 10 cargo run --example cut_plane_demo)",
       "Bash(cargo fmt:*)",
       "Bash(cargo clippy:*)",
-      "Bash(rustc:*)"
+      "Bash(rustc:*)",
+      "Bash(rg:*)"
     ],
     "deny": []
   }
