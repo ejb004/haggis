@@ -64,7 +64,7 @@ use crate::{
         scene::{object::ObjectBuilder, scene::Scene},
     },
     simulation::{manager::SimulationManager, traits::Simulation},
-    ui::{manager::UiManager, panel::default_transform_panel},
+    ui::{manager::UiManager, panel::default_transform_panel, UiStyle},
     visualization::{manager::VisualizationManager, traits::VisualizationComponent},
 };
 
@@ -161,6 +161,8 @@ pub struct AppState {
     /// Graphics rendering engine
     pub render_engine: Option<RenderEngine>,
     ui_manager: Option<UiManager>,
+    /// UI style configuration
+    pub ui_style: UiStyle,
     /// 3D scene containing objects, materials, and camera
     pub scene: Scene,
     /// User-defined UI callback function
@@ -210,6 +212,7 @@ impl HaggisApp {
                 render_engine: None,
                 scene,
                 ui_manager: None,
+                ui_style: UiStyle::default(),
                 ui_callback: None,
                 selected_object_index: Some(0),
                 simulation_manager: SimulationManager::new(),
@@ -332,6 +335,50 @@ impl HaggisApp {
     /// * `enabled` - `true` to enable visualizations, `false` to disable them
     pub fn set_visualization_enabled(&mut self, enabled: bool) {
         self.app_state.visualization_manager.set_enabled(enabled);
+    }
+
+    /// Sets the UI style theme for the application.
+    ///
+    /// This method configures the global UI appearance using predefined or custom themes.
+    /// The style is applied when the UI manager is initialized.
+    ///
+    /// # Arguments
+    ///
+    /// * `style` - UI style configuration (Default, Light, Dark, or Custom)
+    ///
+    /// # Examples
+    ///
+    /// ## Light Theme
+    /// ```no_run
+    /// use haggis::{HaggisApp, ui::UiStyle};
+    ///
+    /// let mut app = haggis::default();
+    /// app.set_ui_style(UiStyle::Light);
+    /// ```
+    ///
+    /// ## Dark Theme
+    /// ```no_run
+    /// use haggis::{HaggisApp, ui::UiStyle};
+    ///
+    /// let mut app = haggis::default();
+    /// app.set_ui_style(UiStyle::Dark);
+    /// ```
+    ///
+    /// ## Custom Theme
+    /// ```no_run
+    /// use haggis::{HaggisApp, ui::UiStyle};
+    ///
+    /// let mut app = haggis::default();
+    /// app.set_ui_style(UiStyle::Custom {
+    ///     background: [0.2, 0.3, 0.4, 1.0],
+    ///     text: [1.0, 1.0, 1.0, 1.0],
+    ///     button: [0.4, 0.6, 0.8, 1.0],
+    ///     button_hovered: [0.5, 0.7, 0.9, 1.0],
+    ///     button_active: [0.3, 0.5, 0.7, 1.0],
+    /// });
+    /// ```
+    pub fn set_ui_style(&mut self, style: UiStyle) {
+        self.app_state.ui_style = style;
     }
 
     /// Sets the UI callback function for custom user interface rendering.
@@ -526,12 +573,13 @@ impl ApplicationHandler for AppState {
             self.scene
                 .update_materials(renderer.device(), renderer.queue());
 
-            // Create UI manager with correct surface dimensions
+            // Create UI manager with correct surface dimensions and style
             let mut ui_manager = UiManager::new(
                 renderer.device(),
                 renderer.queue(),
                 renderer.surface_format(),
                 &window_handle,
+                self.ui_style,
             );
 
             // Set ImGui display size to match actual surface size

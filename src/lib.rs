@@ -56,6 +56,7 @@ pub mod wgpu_utils;
 
 // Re-export main types for convenience
 pub use app::HaggisApp;
+pub use ui::UiStyle;
 
 // Re-export visualization types for external use
 pub use visualization::{CutPlane2D, VisualizationComponent, VisualizationManager};

@@ -52,5 +52,5 @@ pub mod manager;
 pub mod panel;
 
 // Re-export main types
-pub use manager::UiManager;
+pub use manager::{UiManager, UiStyle};
 pub use panel::default_transform_panel;

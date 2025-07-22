@@ -4,7 +4,7 @@
 //! Handles ImGui integration with wgpu and winit, providing frame management,
 //! input handling, and rendering capabilities for the engine's user interface.
 
-use imgui::{Context, FontConfig, FontSource, MouseCursor};
+use imgui::{Context, FontConfig, FontSource, MouseCursor, StyleColor};
 use imgui_wgpu::{Renderer, RendererConfig};
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
 use std::time::Instant;
@@ -13,6 +13,33 @@ use winit::{
     event::{Event, WindowEvent},
     window::Window,
 };
+
+/// UI color theme options
+#[derive(Debug, Clone, Copy)]
+pub enum UiStyle {
+    /// Default ImGui dark theme
+    Default,
+    /// Light theme with bright backgrounds
+    Light,
+    /// Dark theme with custom colors
+    Dark,
+    /// Matrix-inspired green-on-black theme
+    Matrix,
+    /// Custom theme with user-defined colors
+    Custom {
+        background: [f32; 4],
+        text: [f32; 4],
+        button: [f32; 4],
+        button_hovered: [f32; 4],
+        button_active: [f32; 4],
+    },
+}
+
+impl Default for UiStyle {
+    fn default() -> Self {
+        Self::Light
+    }
+}
 
 /// ImGui UI manager
 ///
@@ -38,14 +65,19 @@ impl UiManager {
     /// * `queue` - WGPU queue for renderer operations
     /// * `output_color_format` - Target texture format for rendering
     /// * `window` - Window for platform integration
+    /// * `style` - UI color theme to apply
     pub fn new(
         device: &Device,
         queue: &Queue,
         output_color_format: TextureFormat,
         window: &Window,
+        style: UiStyle,
     ) -> Self {
         let mut context = Context::create();
         context.set_ini_filename(None);
+        
+        // Apply selected color theme
+        Self::apply_style(&mut context, style);
 
         // Setup platform with locked DPI to handle scaling manually
         let mut platform = WinitPlatform::new(&mut context);
@@ -86,6 +118,58 @@ impl UiManager {
             renderer,
             last_frame: Instant::now(),
             last_cursor: None,
+        }
+    }
+
+    /// Applies the specified UI style to the ImGui context
+    fn apply_style(context: &mut Context, style: UiStyle) {
+        let style_mut = context.style_mut();
+        
+        match style {
+            UiStyle::Default => {
+                // Keep ImGui's default dark theme
+            }
+            UiStyle::Light => {
+                style_mut.use_light_colors();
+            }
+            UiStyle::Dark => {
+                style_mut.use_dark_colors();
+                // Optional: customize dark theme further
+                style_mut[StyleColor::WindowBg] = [0.1, 0.1, 0.1, 1.0];
+                style_mut[StyleColor::Text] = [0.9, 0.9, 0.9, 1.0];
+            }
+            UiStyle::Matrix => {
+                // Matrix-inspired green-on-black theme
+                style_mut[StyleColor::WindowBg] = [0.0, 0.05, 0.0, 0.95];
+                style_mut[StyleColor::Text] = [0.0, 1.0, 0.0, 1.0];
+                style_mut[StyleColor::Button] = [0.0, 0.3, 0.0, 1.0];
+                style_mut[StyleColor::ButtonHovered] = [0.0, 0.5, 0.0, 1.0];
+                style_mut[StyleColor::ButtonActive] = [0.0, 0.7, 0.0, 1.0];
+                style_mut[StyleColor::Header] = [0.0, 0.4, 0.0, 1.0];
+                style_mut[StyleColor::HeaderHovered] = [0.0, 0.6, 0.0, 1.0];
+                style_mut[StyleColor::HeaderActive] = [0.0, 0.8, 0.0, 1.0];
+                style_mut[StyleColor::FrameBg] = [0.0, 0.2, 0.0, 1.0];
+                style_mut[StyleColor::FrameBgHovered] = [0.0, 0.3, 0.0, 1.0];
+                style_mut[StyleColor::FrameBgActive] = [0.0, 0.4, 0.0, 1.0];
+                style_mut[StyleColor::TitleBg] = [0.0, 0.2, 0.0, 1.0];
+                style_mut[StyleColor::TitleBgActive] = [0.0, 0.4, 0.0, 1.0];
+                style_mut[StyleColor::CheckMark] = [0.0, 1.0, 0.0, 1.0];
+                style_mut[StyleColor::SliderGrab] = [0.0, 0.6, 0.0, 1.0];
+                style_mut[StyleColor::SliderGrabActive] = [0.0, 0.8, 0.0, 1.0];
+            }
+            UiStyle::Custom {
+                background,
+                text,
+                button,
+                button_hovered,
+                button_active,
+            } => {
+                style_mut[StyleColor::WindowBg] = background;
+                style_mut[StyleColor::Text] = text;
+                style_mut[StyleColor::Button] = button;
+                style_mut[StyleColor::ButtonHovered] = button_hovered;
+                style_mut[StyleColor::ButtonActive] = button_active;
+            }
         }
     }
 
