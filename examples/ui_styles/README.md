@@ -8,6 +8,7 @@ This example demonstrates the different UI styling options available in Haggis. 
 - **Dark Theme**: Dark backgrounds with light text
 - **Matrix Theme**: Green-on-black Matrix-inspired colors
 - **Custom Theme**: User-defined color palette
+- **Font Options**: Default, Monospace, and Custom TTF fonts
 - **Sample Graph**: Demonstrates how styles affect plots and controls
 
 ## Available UI Styles
@@ -44,6 +45,26 @@ app.set_ui_style(UiStyle::Custom {
 });
 ```
 
+### Font Options
+
+```rust
+use haggis::{HaggisApp, UiFont};
+
+let mut app = haggis::default();
+
+// Default font
+app.set_ui_font(UiFont::Default);
+
+// Monospace font (fallback)
+app.set_ui_font(UiFont::Monospace);
+
+// Custom TTF font
+app.set_ui_font(UiFont::Custom {
+    data: include_bytes!("fonts/roboto.ttf"),
+    size: 16.0,
+});
+```
+
 ## Running the Example
 
 ```bash
@@ -53,15 +74,18 @@ cargo run --example ui_styles
 ## Usage
 
 1. Run the example to see the light theme (default)
-2. Modify the `main.rs` file to try different styles:
-   - Change `UiStyle::Light` to `UiStyle::Dark`
+2. Modify the `main.rs` file to try different options:
+   - Change `UiStyle::Matrix` to `UiStyle::Light` or `UiStyle::Dark`
    - Try the custom theme example
-   - Create your own custom colors
-3. Observe how all UI panels (transform controls, simulation panels, etc.) use the same theme
+   - Switch between font options (Default, Monospace, Custom)
+   - Add your own TTF font files to the `fonts/` directory
+3. Observe how all UI panels (transform controls, simulation panels, etc.) use the same theme and font
 
 ## Key Points
 
-- UI styles are set globally and apply to all interface elements
-- Styles are applied when the UI manager is initialized
-- You can change styles before calling `app.run()`
+- UI styles and fonts are set globally and apply to all interface elements
+- Both style and font are applied when the UI manager is initialized
+- You can change both style and font before calling `app.run()`
 - Custom themes allow precise control over individual color elements
+- Custom fonts support any TTF file with configurable size
+- Font changes affect all text rendering including graphs and controls

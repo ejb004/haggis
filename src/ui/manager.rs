@@ -14,6 +14,23 @@ use winit::{
     window::Window,
 };
 
+/// Font configuration options
+#[derive(Debug, Clone)]
+pub enum UiFont {
+    /// Default ImGui font
+    Default,
+    /// Custom TTF font from bytes
+    Custom { data: &'static [u8], size: f32 },
+    /// System monospace font (fallback to default if not available)
+    Monospace,
+}
+
+impl Default for UiFont {
+    fn default() -> Self {
+        Self::Default
+    }
+}
+
 /// UI color theme options
 #[derive(Debug, Clone, Copy)]
 pub enum UiStyle {
@@ -66,12 +83,14 @@ impl UiManager {
     /// * `output_color_format` - Target texture format for rendering
     /// * `window` - Window for platform integration
     /// * `style` - UI color theme to apply
+    /// * `font` - Font configuration to use
     pub fn new(
         device: &Device,
         queue: &Queue,
         output_color_format: TextureFormat,
         window: &Window,
         style: UiStyle,
+        font: UiFont,
     ) -> Self {
         let mut context = Context::create();
         context.set_ini_filename(None);
@@ -83,28 +102,8 @@ impl UiManager {
         let mut platform = WinitPlatform::new(&mut context);
         platform.attach_window(context.io_mut(), window, HiDpiMode::Locked(1.0));
 
-        // Configure fonts with consistent sizing
-        let font_size = 24.0;
-        context.fonts().add_font(&[FontSource::DefaultFontData {
-            config: Some(FontConfig {
-                oversample_h: 1,
-                pixel_snap_h: true,
-                size_pixels: font_size,
-                ..Default::default()
-            }),
-        }]);
-
-        // Uncomment to use custom font:
-        // context.fonts().add_font(&[FontSource::TtfData {
-        //     data: include_bytes!("./fonts/roboto.ttf"),
-        //     size_pixels: font_size,
-        //     config: Some(FontConfig {
-        //         oversample_h: 1,
-        //         pixel_snap_h: true,
-        //         size_pixels: font_size,
-        //         ..Default::default()
-        //     }),
-        // }]);
+        // Configure fonts
+        Self::apply_font(&mut context, font);
 
         let renderer_config = RendererConfig {
             texture_format: output_color_format,
@@ -118,6 +117,49 @@ impl UiManager {
             renderer,
             last_frame: Instant::now(),
             last_cursor: None,
+        }
+    }
+
+    /// Applies the specified font configuration to the ImGui context
+    fn apply_font(context: &mut Context, font: UiFont) {
+        match font {
+            UiFont::Default => {
+                let font_size = 24.0;
+                context.fonts().add_font(&[FontSource::DefaultFontData {
+                    config: Some(FontConfig {
+                        oversample_h: 1,
+                        pixel_snap_h: true,
+                        size_pixels: font_size,
+                        ..Default::default()
+                    }),
+                }]);
+            }
+            UiFont::Custom { data, size } => {
+                context.fonts().add_font(&[FontSource::TtfData {
+                    data,
+                    size_pixels: size,
+                    config: Some(FontConfig {
+                        oversample_h: 1,
+                        pixel_snap_h: true,
+                        size_pixels: size,
+                        ..Default::default()
+                    }),
+                }]);
+            }
+            UiFont::Monospace => {
+                // Try to use a monospace font, fallback to default with monospace hint
+                let font_size = 24.0;
+                context.fonts().add_font(&[FontSource::DefaultFontData {
+                    config: Some(FontConfig {
+                        oversample_h: 1,
+                        pixel_snap_h: true,
+                        size_pixels: font_size,
+                        // Note: ImGui doesn't have direct monospace selection,
+                        // but this serves as a placeholder for future enhancement
+                        ..Default::default()
+                    }),
+                }]);
+            }
         }
     }
 

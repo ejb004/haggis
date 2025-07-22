@@ -64,7 +64,7 @@ use crate::{
         scene::{object::ObjectBuilder, scene::Scene},
     },
     simulation::{manager::SimulationManager, traits::Simulation},
-    ui::{manager::UiManager, panel::default_transform_panel, UiStyle},
+    ui::{manager::UiManager, panel::default_transform_panel, UiFont, UiStyle},
     visualization::{manager::VisualizationManager, traits::VisualizationComponent},
 };
 
@@ -163,6 +163,8 @@ pub struct AppState {
     ui_manager: Option<UiManager>,
     /// UI style configuration
     pub ui_style: UiStyle,
+    /// UI font configuration
+    pub ui_font: UiFont,
     /// 3D scene containing objects, materials, and camera
     pub scene: Scene,
     /// User-defined UI callback function
@@ -213,6 +215,7 @@ impl HaggisApp {
                 scene,
                 ui_manager: None,
                 ui_style: UiStyle::default(),
+                ui_font: UiFont::default(),
                 ui_callback: None,
                 selected_object_index: Some(0),
                 simulation_manager: SimulationManager::new(),
@@ -344,29 +347,29 @@ impl HaggisApp {
     ///
     /// # Arguments
     ///
-    /// * `style` - UI style configuration (Default, Light, Dark, or Custom)
+    /// * `style` - UI style configuration (Default, Light, Dark, Matrix, or Custom)
     ///
     /// # Examples
     ///
     /// ## Light Theme
     /// ```no_run
-    /// use haggis::{HaggisApp, ui::UiStyle};
+    /// use haggis::{HaggisApp, UiStyle};
     ///
     /// let mut app = haggis::default();
     /// app.set_ui_style(UiStyle::Light);
     /// ```
     ///
-    /// ## Dark Theme
+    /// ## Matrix Theme
     /// ```no_run
-    /// use haggis::{HaggisApp, ui::UiStyle};
+    /// use haggis::{HaggisApp, UiStyle};
     ///
     /// let mut app = haggis::default();
-    /// app.set_ui_style(UiStyle::Dark);
+    /// app.set_ui_style(UiStyle::Matrix);
     /// ```
     ///
     /// ## Custom Theme
     /// ```no_run
-    /// use haggis::{HaggisApp, ui::UiStyle};
+    /// use haggis::{HaggisApp, UiStyle};
     ///
     /// let mut app = haggis::default();
     /// app.set_ui_style(UiStyle::Custom {
@@ -379,6 +382,47 @@ impl HaggisApp {
     /// ```
     pub fn set_ui_style(&mut self, style: UiStyle) {
         self.app_state.ui_style = style;
+    }
+
+    /// Sets the UI font configuration for the application.
+    ///
+    /// This method configures the global UI font. The font is applied when
+    /// the UI manager is initialized.
+    ///
+    /// # Arguments
+    ///
+    /// * `font` - UI font configuration (Default, Custom, or Monospace)
+    ///
+    /// # Examples
+    ///
+    /// ## Default Font
+    /// ```no_run
+    /// use haggis::{HaggisApp, UiFont};
+    ///
+    /// let mut app = haggis::default();
+    /// app.set_ui_font(UiFont::Default);
+    /// ```
+    ///
+    /// ## Custom Font
+    /// ```no_run
+    /// use haggis::{HaggisApp, UiFont};
+    ///
+    /// let mut app = haggis::default();
+    /// app.set_ui_font(UiFont::Custom {
+    ///     data: include_bytes!("../fonts/my_font.ttf"),
+    ///     size: 18.0,
+    /// });
+    /// ```
+    ///
+    /// ## Monospace Font
+    /// ```no_run
+    /// use haggis::{HaggisApp, UiFont};
+    ///
+    /// let mut app = haggis::default();
+    /// app.set_ui_font(UiFont::Monospace);
+    /// ```
+    pub fn set_ui_font(&mut self, font: UiFont) {
+        self.app_state.ui_font = font;
     }
 
     /// Sets the UI callback function for custom user interface rendering.
@@ -573,13 +617,14 @@ impl ApplicationHandler for AppState {
             self.scene
                 .update_materials(renderer.device(), renderer.queue());
 
-            // Create UI manager with correct surface dimensions and style
+            // Create UI manager with correct surface dimensions, style, and font
             let mut ui_manager = UiManager::new(
                 renderer.device(),
                 renderer.queue(),
                 renderer.surface_format(),
                 &window_handle,
                 self.ui_style,
+                self.ui_font.clone(),
             );
 
             // Set ImGui display size to match actual surface size

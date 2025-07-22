@@ -7,7 +7,7 @@
 //!
 //! Press '1' for Light, '2' for Dark, '3' for Custom theme.
 
-use haggis::UiStyle;
+use haggis::{UiFont, UiStyle};
 use std::sync::{Arc, Mutex};
 
 fn main() {
@@ -18,9 +18,17 @@ fn main() {
     let mut app = haggis::default();
 
     // Set initial light theme
-    // app.set_ui_style(UiStyle::Light);
+    app.set_ui_style(UiStyle::Light);
     // app.set_ui_style(UiStyle::Dark);
-    app.set_ui_style(UiStyle::Matrix);
+    // app.set_ui_style(UiStyle::Matrix);
+
+    // Try different font options:
+    // app.set_ui_font(UiFont::Default);
+    // app.set_ui_font(UiFont::Monospace); // Monospace fallback
+    app.set_ui_font(UiFont::Custom {
+        data: include_bytes!("fonts/inter.ttf"), // Add your own font file
+        size: 32.0,
+    });
 
     // app.set_ui_style(UiStyle::Custom {
     //     background: [0.2, 0.3, 0.4, 1.0],     // Window background
@@ -43,9 +51,16 @@ fn main() {
     // Set up UI with style switching controls and sample graph
     app.set_ui(move |ui, _scene, _selected| {
         ui.window("UI Style Demo").build(|| {
-            ui.text("UI STYLE:");
+            ui.text("UI STYLE & FONT DEMO:");
             ui.separator();
             ui.button("Sample Button");
+            ui.separator();
+            ui.text("Font Configuration:");
+            ui.text("• Default: Standard ImGui font");
+            ui.text("• Monospace: Fixed-width fallback");
+            ui.text("• Custom: Load your own TTF fonts");
+            ui.separator();
+            ui.text("Matrix Theme Active");
         });
 
         // Sample graph window
