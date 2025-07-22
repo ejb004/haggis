@@ -114,6 +114,17 @@ impl VisualizationRenderer {
                         },
                         count: None,
                     },
+                    // Filter uniform buffer for GPU filtering mode
+                    BindGroupLayoutEntry {
+                        binding: 4,
+                        visibility: ShaderStages::FRAGMENT,
+                        ty: BindingType::Buffer {
+                            ty: BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
                 ],
             });
 

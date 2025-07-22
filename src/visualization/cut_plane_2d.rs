@@ -5,7 +5,7 @@
 
 use super::rendering::VisualizationMaterial;
 use super::traits::VisualizationComponent;
-use super::ui::cut_plane_controls::VisualizationMode;
+use super::ui::cut_plane_controls::{FilterMode, VisualizationMode};
 use crate::gfx::{resources::texture_resource::TextureResource, scene::Scene};
 use cgmath::Vector3;
 use imgui::Ui;
@@ -48,6 +48,8 @@ pub struct CutPlane2D {
     // Configuration
     enabled: bool,
     mode: VisualizationMode,
+    filter_mode: FilterMode,
+    last_filter_mode: FilterMode, // Track changes
 
     // View controls
     zoom: f32,
@@ -55,6 +57,8 @@ pub struct CutPlane2D {
 
     // Data source (CPU or GPU)
     data_source: Option<DataSource>,
+    // CPU data dimensions (for proper size validation)
+    cpu_data_dimensions: Option<(u32, u32)>,
 
     // Rendering - using separate visualization system
     material: Option<VisualizationMaterial>,
@@ -66,6 +70,7 @@ pub struct CutPlane2D {
     // Update flags
     needs_material_update: bool,
     needs_scene_object_update: bool,
+    needs_filter_update: bool, // Track filter changes separately
 }
 
 impl CutPlane2D {
@@ -74,22 +79,27 @@ impl CutPlane2D {
         Self {
             enabled: true,
             mode: VisualizationMode::Heatmap,
+            filter_mode: FilterMode::Sharp, // Default to sharp for discrete data like Conway's Game of Life
+            last_filter_mode: FilterMode::Sharp,
             zoom: 1.0,
             pan: [0.0, 0.0],
             data_source: None,
+            cpu_data_dimensions: None,
             material: None,
             position: Vector3::new(0.0, 0.0, 0.0),
             size: 2.0,
             needs_material_update: true,
             needs_scene_object_update: true,
+            needs_filter_update: false,
         }
     }
 
     /// Set CPU data for visualization (traditional approach)
-    pub fn update_data(&mut self, data: Vec<f32>, _width: u32, _height: u32) {
-        // Note: For CPU data, we'll need to store dimensions separately for compatibility
-        // For now, we store the data and infer dimensions later
+    pub fn update_data(&mut self, data: Vec<f32>, width: u32, height: u32) {
+        // Store data with dimensions for accurate size validation
         self.data_source = Some(DataSource::CpuData(data));
+        // Store dimensions for CPU data in a compatible way
+        self.cpu_data_dimensions = Some((width, height));
         self.needs_material_update = true;
         self.needs_scene_object_update = true;
     }
@@ -116,9 +126,8 @@ impl CutPlane2D {
     pub fn get_dimensions(&self) -> (u32, u32) {
         match &self.data_source {
             Some(DataSource::CpuData(_data)) => {
-                // For CPU data, we need to infer dimensions from context
-                // This is a limitation of the old API - we'll maintain it for compatibility
-                (64, 64) // Default fallback - should be overridden in practice
+                // Use stored dimensions for CPU data to prevent size mismatches
+                self.cpu_data_dimensions.unwrap_or((64, 64)) // Fallback to default if not set
             }
             Some(DataSource::GpuBuffer { format, .. }) => (format.width, format.height),
             None => (0, 0),
@@ -133,6 +142,23 @@ impl CutPlane2D {
     /// Set size of the visualization plane
     pub fn set_size(&mut self, size: f32) {
         self.size = size;
+    }
+
+    /// Set texture filtering mode (Sharp vs Smooth)
+    pub fn set_filter_mode(&mut self, filter_mode: FilterMode) {
+        if self.filter_mode != filter_mode {
+            self.filter_mode = filter_mode;
+            self.needs_filter_update = true;
+            // For CPU materials, we need to recreate with new filtering
+            if matches!(self.data_source, Some(DataSource::CpuData(_))) {
+                self.needs_material_update = true;
+            }
+        }
+    }
+
+    /// Get current filter mode
+    pub fn get_filter_mode(&self) -> FilterMode {
+        self.filter_mode
     }
 
     /// Get current position
@@ -191,19 +217,26 @@ impl CutPlane2D {
                     VisualizationMode::Points => self.apply_points_visualization(data),
                 };
 
-                self.material = Some(VisualizationMaterial::from_2d_data(
+                let wgpu_filter = match self.filter_mode {
+                    FilterMode::Sharp => wgpu::FilterMode::Nearest,
+                    FilterMode::Smooth => wgpu::FilterMode::Linear,
+                };
+
+                self.material = Some(VisualizationMaterial::from_2d_data_with_filter(
                     device,
                     queue,
                     &processed_data,
                     width,
                     height,
                     "2D Data Plane Material",
+                    wgpu_filter,
                 ));
             }
             DataSource::GpuBuffer { buffer, format } => {
                 // High-performance GPU buffer path - create material that references buffer directly
                 self.material = Some(VisualizationMaterial::from_gpu_buffer(
                     device,
+                    queue,
                     buffer.clone(),
                     *format,
                     self.mode,
@@ -348,6 +381,16 @@ impl VisualizationComponent for CutPlane2D {
         if self.needs_material_update {
             if let (Some(device), Some(queue)) = (device, queue) {
                 self.update_material(device, queue);
+            }
+        }
+        
+        // Update filter mode for GPU materials (only when changed)
+        if self.needs_filter_update && self.filter_mode != self.last_filter_mode {
+            if let (Some(material), Some(queue)) = (&self.material, queue) {
+                material.update_filter_mode(queue, self.filter_mode);
+                self.last_filter_mode = self.filter_mode;
+                self.needs_filter_update = false;
+                println!("🎨 Filter mode updated to: {:?}", self.filter_mode); // Debug output
             }
         }
     }

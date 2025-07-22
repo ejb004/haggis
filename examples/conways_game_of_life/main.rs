@@ -24,7 +24,7 @@
 use cgmath::Vector3;
 use haggis::{
     simulation::BaseSimulation, 
-    visualization::{traits::VisualizationComponent, cut_plane_2d::BufferElementType}, 
+    visualization::{traits::VisualizationComponent, cut_plane_2d::BufferElementType, ui::cut_plane_controls::FilterMode}, 
     CutPlane2D,
 };
 use std::{time::Instant, sync::Arc};
@@ -482,10 +482,18 @@ impl ConwaysGpuSimulation {
                 Arc::new(gpu_resources.buffer_a.clone())
             };
 
+            // Preserve current filter mode when recreating visualization
+            let current_filter_mode = self.base.get_visualization("data_plane")
+                .and_then(|v| v.as_any().downcast_ref::<CutPlane2D>().map(|cp| cp.get_filter_mode()))
+                .unwrap_or(FilterMode::Sharp);
+
             // Create CutPlane2D that references GPU buffer directly
             let mut data_plane = CutPlane2D::new();
             data_plane.set_position(Vector3::new(0.0, 2.0, 0.0));
             data_plane.set_size(2.0);
+            
+            // Restore the filter mode BEFORE updating GPU buffer
+            data_plane.set_filter_mode(current_filter_mode);
 
             // Use the new GPU buffer API - this is the key optimization!
             data_plane.update_u32_buffer(current_buffer, self.width, self.height);
@@ -706,6 +714,30 @@ impl haggis::simulation::traits::Simulation for ConwaysGpuSimulation {
                     );
                 } else {
                     ui.text_colored([1.0, 0.5, 0.0, 1.0], "⚙ Initializing GPU...");
+                }
+
+                ui.separator();
+
+                // Filter mode toggle
+                ui.text("Rendering Style:");
+                let current_filter = self.base.get_visualization("data_plane")
+                    .and_then(|v| v.as_any().downcast_ref::<CutPlane2D>().map(|cp| cp.get_filter_mode()))
+                    .unwrap_or(FilterMode::Sharp);
+                
+                if ui.radio_button_bool("Sharp (Pixelated)", current_filter == FilterMode::Sharp) {
+                    if let Some(data_plane) = self.base.get_visualization_mut("data_plane") {
+                        if let Some(cut_plane) = data_plane.as_any_mut().downcast_mut::<CutPlane2D>() {
+                            cut_plane.set_filter_mode(FilterMode::Sharp);
+                        }
+                    }
+                }
+                
+                if ui.radio_button_bool("Smooth (Interpolated)", current_filter == FilterMode::Smooth) {
+                    if let Some(data_plane) = self.base.get_visualization_mut("data_plane") {
+                        if let Some(cut_plane) = data_plane.as_any_mut().downcast_mut::<CutPlane2D>() {
+                            cut_plane.set_filter_mode(FilterMode::Smooth);
+                        }
+                    }
                 }
 
                 ui.separator();

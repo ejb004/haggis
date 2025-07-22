@@ -3,6 +3,7 @@
 //! This example demonstrates Conway's Game of Life using the 2D data plane visualization system.
 //! It follows the exact same pattern as cut_plane_demo but with Conway's Game of Life data.
 
+use haggis::visualization::ui::cut_plane_controls::FilterMode;
 use haggis::{simulation::BaseSimulation, CutPlane2D};
 use std::time::Instant;
 
@@ -143,9 +144,7 @@ impl GameOfLifeState {
                 // Place glider at center
                 let center_x = self.width / 2;
                 let center_y = self.height / 2;
-                let glider_pattern = [
-                    (1, 0), (2, 1), (0, 2), (1, 2), (2, 2)
-                ];
+                let glider_pattern = [(1, 0), (2, 1), (0, 2), (1, 2), (2, 2)];
                 for (dx, dy) in glider_pattern.iter() {
                     let x = center_x + dx;
                     let y = center_y + dy;
@@ -171,10 +170,42 @@ impl GameOfLifeState {
             LifePattern::GosperGun => {
                 // Place Gosper Glider Gun at upper left
                 let gun_pattern = [
-                    (24, 0), (22, 1), (24, 1), (12, 2), (13, 2), (20, 2), (21, 2), (34, 2), (35, 2),
-                    (11, 3), (15, 3), (20, 3), (21, 3), (34, 3), (35, 3), (0, 4), (1, 4), (10, 4), (16, 4),
-                    (20, 4), (21, 4), (0, 5), (1, 5), (10, 5), (14, 5), (16, 5), (17, 5), (22, 5), (24, 5),
-                    (10, 6), (16, 6), (24, 6), (11, 7), (15, 7), (12, 8), (13, 8)
+                    (24, 0),
+                    (22, 1),
+                    (24, 1),
+                    (12, 2),
+                    (13, 2),
+                    (20, 2),
+                    (21, 2),
+                    (34, 2),
+                    (35, 2),
+                    (11, 3),
+                    (15, 3),
+                    (20, 3),
+                    (21, 3),
+                    (34, 3),
+                    (35, 3),
+                    (0, 4),
+                    (1, 4),
+                    (10, 4),
+                    (16, 4),
+                    (20, 4),
+                    (21, 4),
+                    (0, 5),
+                    (1, 5),
+                    (10, 5),
+                    (14, 5),
+                    (16, 5),
+                    (17, 5),
+                    (22, 5),
+                    (24, 5),
+                    (10, 6),
+                    (16, 6),
+                    (24, 6),
+                    (11, 7),
+                    (15, 7),
+                    (12, 8),
+                    (13, 8),
                 ];
                 for (x, y) in gun_pattern.iter() {
                     if *x < self.width && *y < self.height {
@@ -251,7 +282,11 @@ impl haggis::simulation::traits::Simulation for ConwaysCpuSimulation {
     fn initialize(&mut self, scene: &mut haggis::gfx::scene::Scene) {
         self.base.initialize(scene);
         let live_count = self.game.live_count();
-        println!("🔬 Initial {} pattern: {} live cells", self.current_pattern.as_str(), live_count);
+        println!(
+            "🔬 Initial {} pattern: {} live cells",
+            self.current_pattern.as_str(),
+            live_count
+        );
         println!("🚀 Conway's Game of Life CPU simulation initialized");
     }
 
@@ -285,7 +320,10 @@ impl haggis::simulation::traits::Simulation for ConwaysCpuSimulation {
                 ui.separator();
 
                 ui.text(&format!("Generation: {}", self.game.generation));
-                ui.text(&format!("Grid Size: {}x{}", self.game.width, self.game.height));
+                ui.text(&format!(
+                    "Grid Size: {}x{}",
+                    self.game.width, self.game.height
+                ));
                 ui.text(&format!("Live Cells: {}", self.game.live_count()));
 
                 ui.separator();
@@ -294,7 +332,7 @@ impl haggis::simulation::traits::Simulation for ConwaysCpuSimulation {
                 ui.text("Pattern Selection:");
                 let patterns = [
                     LifePattern::Glider,
-                    LifePattern::Blinker, 
+                    LifePattern::Blinker,
                     LifePattern::GosperGun,
                     LifePattern::Random,
                     LifePattern::Clear,
@@ -313,7 +351,11 @@ impl haggis::simulation::traits::Simulation for ConwaysCpuSimulation {
                 ui.separator();
 
                 // Controls
-                if ui.button(if self.is_paused { "▶ Play" } else { "⏸ Pause" }) {
+                if ui.button(if self.is_paused {
+                    "▶ Play"
+                } else {
+                    "⏸ Pause"
+                }) {
                     self.is_paused = !self.is_paused;
                 }
                 ui.same_line();
@@ -342,7 +384,47 @@ impl haggis::simulation::traits::Simulation for ConwaysCpuSimulation {
                 if self.is_paused {
                     ui.text_colored([1.0, 1.0, 0.0, 1.0], "⏸ Paused");
                 } else {
-                    ui.text_colored([0.0, 1.0, 0.0, 1.0], &format!("▶ Running ({:.1} gen/sec)", self.speed));
+                    ui.text_colored(
+                        [0.0, 1.0, 0.0, 1.0],
+                        &format!("▶ Running ({:.1} gen/sec)", self.speed),
+                    );
+                }
+
+                ui.separator();
+
+                // Filter mode toggle
+                ui.text("Rendering Style:");
+                let current_filter = self
+                    .base
+                    .get_visualization("data_plane")
+                    .and_then(|v| {
+                        v.as_any()
+                            .downcast_ref::<CutPlane2D>()
+                            .map(|cp| cp.get_filter_mode())
+                    })
+                    .unwrap_or(FilterMode::Sharp);
+
+                if ui.radio_button_bool("Sharp (Pixelated)", current_filter == FilterMode::Sharp) {
+                    if let Some(data_plane) = self.base.get_visualization_mut("data_plane") {
+                        if let Some(cut_plane) =
+                            data_plane.as_any_mut().downcast_mut::<CutPlane2D>()
+                        {
+                            cut_plane.set_filter_mode(FilterMode::Sharp);
+                        }
+                    }
+                }
+
+                if ui.radio_button_bool(
+                    "Smooth (Interpolated)",
+                    current_filter == FilterMode::Smooth,
+                ) {
+                    if let Some(data_plane) = self.base.get_visualization_mut("data_plane") {
+                        if let Some(cut_plane) =
+                            data_plane.as_any_mut().downcast_mut::<CutPlane2D>()
+                        {
+                            cut_plane.set_filter_mode(FilterMode::Smooth);
+                        }
+                    }
                 }
 
                 ui.separator();
@@ -369,7 +451,7 @@ impl haggis::simulation::traits::Simulation for ConwaysCpuSimulation {
     }
 
     fn reset(&mut self, scene: &mut haggis::gfx::scene::Scene) {
-        self.game = GameOfLifeState::new(64, 64);
+        self.game = GameOfLifeState::new(128, 128);
         self.update_visualization();
         self.base.reset(scene);
     }

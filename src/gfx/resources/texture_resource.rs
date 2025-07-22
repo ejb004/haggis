@@ -118,7 +118,7 @@ impl TextureResource {
         }
     }
 
-    /// Creates a 2D texture from raw RGBA data
+    /// Creates a 2D texture from raw RGBA data with configurable filtering
     ///
     /// Creates a texture that can be used for data visualization, such as heatmaps
     /// or other procedurally generated content.
@@ -130,16 +130,18 @@ impl TextureResource {
     /// * `width` - Width of the texture in pixels
     /// * `height` - Height of the texture in pixels
     /// * `label` - Debug label for the texture
+    /// * `filter_mode` - Texture filtering mode (Nearest for sharp, Linear for smooth)
     ///
     /// # Returns
     /// TextureResource with the uploaded data
-    pub fn create_from_rgba_data(
+    pub fn create_from_rgba_data_with_filter(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         data: &[u8],
         width: u32,
         height: u32,
         label: &str,
+        filter_mode: wgpu::FilterMode,
     ) -> Self {
         let size = wgpu::Extent3d {
             width,
@@ -182,8 +184,8 @@ impl TextureResource {
             address_mode_u: wgpu::AddressMode::ClampToEdge,
             address_mode_v: wgpu::AddressMode::ClampToEdge,
             address_mode_w: wgpu::AddressMode::ClampToEdge,
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
+            mag_filter: filter_mode,
+            min_filter: filter_mode,
             mipmap_filter: wgpu::FilterMode::Nearest,
             ..Default::default()
         });
@@ -193,5 +195,39 @@ impl TextureResource {
             view,
             sampler,
         }
+    }
+
+    /// Creates a 2D texture from raw RGBA data with default linear filtering
+    ///
+    /// Convenience method that uses Linear filtering for backwards compatibility.
+    /// For sharp, pixelated rendering, use `create_from_rgba_data_with_filter` with `FilterMode::Nearest`.
+    ///
+    /// # Arguments
+    /// * `device` - WGPU device for creating resources
+    /// * `queue` - WGPU queue for uploading data
+    /// * `data` - Raw RGBA8 pixel data (4 bytes per pixel)
+    /// * `width` - Width of the texture in pixels
+    /// * `height` - Height of the texture in pixels
+    /// * `label` - Debug label for the texture
+    ///
+    /// # Returns
+    /// TextureResource with the uploaded data
+    pub fn create_from_rgba_data(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        data: &[u8],
+        width: u32,
+        height: u32,
+        label: &str,
+    ) -> Self {
+        Self::create_from_rgba_data_with_filter(
+            device,
+            queue,
+            data,
+            width,
+            height,
+            label,
+            wgpu::FilterMode::Linear, // Default to smooth for backwards compatibility
+        )
     }
 }

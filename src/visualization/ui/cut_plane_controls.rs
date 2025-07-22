@@ -47,6 +47,13 @@ pub enum VisualizationMode {
     Heatmap,
 }
 
+/// Texture filtering mode for the cut plane
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum FilterMode {
+    Sharp,  // Nearest filtering - pixelated, sharp boundaries
+    Smooth, // Linear filtering - interpolated, smooth transitions
+}
+
 impl VisualizationMode {
     /// Get all available modes
     pub fn all() -> [VisualizationMode; 3] {
@@ -65,6 +72,25 @@ impl VisualizationMode {
             VisualizationMode::Heatmap => "Heatmap",
         }
     }
+}
+
+impl FilterMode {
+    /// Get all available filter modes
+    pub fn all() -> [FilterMode; 2] {
+        [
+            FilterMode::Sharp,
+            FilterMode::Smooth,
+        ]
+    }
+
+    /// Get the string representation
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            FilterMode::Sharp => "Sharp (Pixelated)",
+            FilterMode::Smooth => "Smooth (Interpolated)",
+        }
+    }
+
 }
 
 /// Renders the cut plane control UI

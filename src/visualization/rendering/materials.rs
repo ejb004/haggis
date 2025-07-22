@@ -18,6 +18,7 @@ pub struct VisualizationMaterial {
     pub visualization_mode: VisualizationMode,   // How to render the data
     pub bind_group: Option<BindGroup>,
     pub transform_buffer: Option<Buffer>,
+    pub filter_uniform_buffer: Option<Buffer>,   // For GPU filter mode
 }
 
 impl VisualizationMaterial {
@@ -30,12 +31,14 @@ impl VisualizationMaterial {
             visualization_mode: VisualizationMode::Heatmap,
             bind_group: None,
             transform_buffer: None,
+            filter_uniform_buffer: None,
         }
     }
 
     /// Create a material from GPU buffer (high-performance path)
     pub fn from_gpu_buffer(
         device: &Device,
+        queue: &Queue,
         buffer: Arc<Buffer>,
         format: BufferFormat,
         mode: VisualizationMode,
@@ -102,6 +105,17 @@ impl VisualizationMaterial {
                     },
                     count: None,
                 },
+                // Filter uniforms buffer (binding 4) - new filtering configuration
+                BindGroupLayoutEntry {
+                    binding: 4,
+                    visibility: ShaderStages::FRAGMENT,
+                    ty: BindingType::Buffer {
+                        ty: BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
             ],
         });
 
@@ -130,6 +144,24 @@ impl VisualizationMaterial {
             ..Default::default()
         });
 
+        // Create and initialize filter uniform buffer with default sharp filtering
+        let filter_uniform_data = [
+            0u32,                    // filter_mode: 0 = sharp (default)
+            format.width,            // grid_width
+            format.height,           // grid_height  
+            0u32,                    // padding
+        ];
+        
+        let filter_uniform_buffer = device.create_buffer(&BufferDescriptor {
+            label: Some(&format!("{} Filter Uniform Buffer", label)),
+            size: (4 * std::mem::size_of::<u32>()) as BufferAddress,
+            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        // Initialize the buffer with default values
+        queue.write_buffer(&filter_uniform_buffer, 0, bytemuck::cast_slice(&filter_uniform_data));
+
         let bind_group = device.create_bind_group(&BindGroupDescriptor {
             label: Some(&format!("{} GPU Buffer Bind Group", label)),
             layout: &layout,
@@ -150,6 +182,10 @@ impl VisualizationMaterial {
                     binding: 3,
                     resource: buffer.as_entire_binding(), // GPU data buffer
                 },
+                BindGroupEntry {
+                    binding: 4,
+                    resource: filter_uniform_buffer.as_entire_binding(), // Filter uniform buffer
+                },
             ],
         });
 
@@ -160,6 +196,7 @@ impl VisualizationMaterial {
             visualization_mode: mode,
             bind_group: Some(bind_group),
             transform_buffer: Some(transform_buffer),
+            filter_uniform_buffer: Some(filter_uniform_buffer),
         }
     }
 
@@ -181,27 +218,39 @@ impl VisualizationMaterial {
         }));
     }
 
-    /// Create a material from 2D data
-    pub fn from_2d_data(
+    /// Create a material from 2D data with configurable filtering
+    pub fn from_2d_data_with_filter(
         device: &Device,
         queue: &Queue,
         data: &[f32],
         width: u32,
         height: u32,
         label: &str,
+        filter_mode: wgpu::FilterMode,
     ) -> Self {
-        // Convert f32 data to RGBA8
+        // Convert f32 data to RGBA8 with proper row alignment
+        let expected_size = (width * height) as usize;
+        if data.len() != expected_size {
+            eprintln!("Warning: Data size mismatch. Expected {}, got {}", expected_size, data.len());
+        }
+        
         let rgba_data: Vec<u8> = data
             .iter()
+            .take(expected_size) // Ensure we don't exceed expected size
             .flat_map(|&value| {
                 let normalized = value.clamp(0.0, 1.0);
                 let color_val = (normalized * 255.0) as u8;
-                [color_val, color_val, color_val, 255u8] // Grayscale
+                [color_val, color_val, color_val, 255u8] // Grayscale RGBA
             })
             .collect();
 
+        // Verify final data size
+        let expected_rgba_size = (width * height * 4) as usize;
+        assert_eq!(rgba_data.len(), expected_rgba_size, 
+            "RGBA data size mismatch: expected {}, got {}", expected_rgba_size, rgba_data.len());
+
         let texture =
-            TextureResource::create_from_rgba_data(device, queue, &rgba_data, width, height, label);
+            TextureResource::create_from_rgba_data_with_filter(device, queue, &rgba_data, width, height, label, filter_mode);
 
         // Create a dummy storage buffer for the material bind group
         let dummy_buffer = device.create_buffer(&BufferDescriptor {
@@ -232,6 +281,14 @@ impl VisualizationMaterial {
             0,
             bytemuck::cast_slice(&[identity_matrix]),
         );
+
+        // Create dummy filter uniform buffer for consistency with GPU path
+        let dummy_filter_buffer = device.create_buffer(&BufferDescriptor {
+            label: Some("Dummy Filter Uniform Buffer"),
+            size: (4 * std::mem::size_of::<u32>()) as BufferAddress,
+            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
 
         // Create the material bind group layout
         let layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
@@ -277,6 +334,17 @@ impl VisualizationMaterial {
                     },
                     count: None,
                 },
+                // Filter uniform buffer binding (matches GPU path)
+                BindGroupLayoutEntry {
+                    binding: 4,
+                    visibility: ShaderStages::FRAGMENT,
+                    ty: BindingType::Buffer {
+                        ty: BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
             ],
         });
 
@@ -300,6 +368,10 @@ impl VisualizationMaterial {
                     binding: 3,
                     resource: dummy_buffer.as_entire_binding(),
                 },
+                BindGroupEntry {
+                    binding: 4,
+                    resource: dummy_filter_buffer.as_entire_binding(),
+                },
             ],
         });
 
@@ -310,7 +382,28 @@ impl VisualizationMaterial {
             visualization_mode: VisualizationMode::Heatmap,
             bind_group: Some(bind_group),
             transform_buffer: Some(transform_buffer),
+            filter_uniform_buffer: Some(dummy_filter_buffer),
         }
+    }
+
+    /// Create a material from 2D data with default smooth filtering (backward compatibility)
+    pub fn from_2d_data(
+        device: &Device,
+        queue: &Queue,
+        data: &[f32],
+        width: u32,
+        height: u32,
+        label: &str,
+    ) -> Self {
+        Self::from_2d_data_with_filter(
+            device,
+            queue,
+            data,
+            width,
+            height,
+            label,
+            wgpu::FilterMode::Linear, // Default to smooth for backward compatibility
+        )
     }
 
     /// Create a checkerboard material
@@ -337,6 +430,25 @@ impl VisualizationMaterial {
         }
 
         Self::from_2d_data(device, queue, &data, width, height, "Checkerboard Material")
+    }
+
+    /// Update the filter mode for GPU materials
+    pub fn update_filter_mode(&self, queue: &Queue, filter_mode: crate::visualization::ui::cut_plane_controls::FilterMode) {
+        if let (Some(filter_buffer), Some(format)) = (&self.filter_uniform_buffer, &self.buffer_format) {
+            let filter_mode_value = match filter_mode {
+                crate::visualization::ui::cut_plane_controls::FilterMode::Sharp => 0u32,
+                crate::visualization::ui::cut_plane_controls::FilterMode::Smooth => 1u32,
+            };
+            
+            let filter_uniform_data = [
+                filter_mode_value,   // filter_mode
+                format.width,        // grid_width
+                format.height,       // grid_height
+                0u32,                // padding
+            ];
+            
+            queue.write_buffer(filter_buffer, 0, bytemuck::cast_slice(&filter_uniform_data));
+        }
     }
 
     /// Update the transform matrix for this material

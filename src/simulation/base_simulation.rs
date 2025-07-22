@@ -97,6 +97,11 @@ impl BaseSimulation {
         &mut self.visualization_manager
     }
 
+    /// Get a reference to a specific visualization by name
+    pub fn get_visualization(&self, name: &str) -> Option<&dyn crate::visualization::traits::VisualizationComponent> {
+        self.visualization_manager.get_component(name)
+    }
+
     /// Get a mutable reference to a specific visualization component
     pub fn get_visualization_mut(&mut self, name: &str) -> Option<&mut Box<dyn VisualizationComponent>> {
         self.visualization_manager.get_component_mut(name)

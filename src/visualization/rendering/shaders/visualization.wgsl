@@ -48,6 +48,17 @@ var s_diffuse: sampler;
 @group(1) @binding(3)
 var<storage, read> gpu_data_buffer: array<u32>;
 
+// Filter mode uniform (0 = sharp, 1 = smooth)
+struct FilterUniforms {
+    filter_mode: u32,  // 0 = nearest/sharp, 1 = linear/smooth
+    grid_width: u32,
+    grid_height: u32,
+    _padding: u32,
+};
+
+@group(1) @binding(4)
+var<uniform> filter_uniforms: FilterUniforms;
+
 // Fragment shader with dual mode support
 @fragment
 fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
@@ -55,21 +66,53 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     let tex_dimensions = textureDimensions(t_diffuse);
     
     if (tex_dimensions.x == 1u && tex_dimensions.y == 1u) {
-        // GPU buffer mode - use storage buffer data
-        // This is a simple example assuming 128x128 grid - in production this should be parameterized
-        let grid_size = 128u;
-        let grid_x = u32(input.tex_coords.x * f32(grid_size));
-        let grid_y = u32(input.tex_coords.y * f32(grid_size));
-        let index = grid_y * grid_size + grid_x;
+        // GPU buffer mode - use storage buffer data with configurable filtering
+        let grid_width = filter_uniforms.grid_width;
+        let grid_height = filter_uniforms.grid_height;
         
-        // Bounds check to avoid buffer overrun
-        if (index < arrayLength(&gpu_data_buffer)) {
-            let cell_value = gpu_data_buffer[index];
-            let intensity = f32(cell_value);
-            // Simple visualization: dead cells = black, live cells = white
-            return vec4<f32>(intensity, intensity, intensity, 1.0);
+        if (filter_uniforms.filter_mode == 0u) {
+            // Sharp/Nearest filtering - sample exact pixel
+            let grid_x = u32(input.tex_coords.x * f32(grid_width));
+            let grid_y = u32(input.tex_coords.y * f32(grid_height));
+            let index = grid_y * grid_width + grid_x;
+            
+            if (index < arrayLength(&gpu_data_buffer)) {
+                let cell_value = gpu_data_buffer[index];
+                let intensity = f32(cell_value);
+                return vec4<f32>(intensity, intensity, intensity, 1.0);
+            } else {
+                return vec4<f32>(0.0, 0.0, 0.0, 1.0);
+            }
         } else {
-            return vec4<f32>(0.0, 0.0, 0.0, 1.0); // Black for out of bounds
+            // Smooth/Linear filtering - bilinear interpolation between 4 neighboring pixels
+            let x_scaled = input.tex_coords.x * f32(grid_width) - 0.5;
+            let y_scaled = input.tex_coords.y * f32(grid_height) - 0.5;
+            
+            let x0 = u32(max(0.0, floor(x_scaled)));
+            let y0 = u32(max(0.0, floor(y_scaled)));
+            let x1 = min(x0 + 1u, grid_width - 1u);
+            let y1 = min(y0 + 1u, grid_height - 1u);
+            
+            let fx = fract(x_scaled);
+            let fy = fract(y_scaled);
+            
+            // Sample the 4 corners
+            let idx_00 = y0 * grid_width + x0;
+            let idx_01 = y0 * grid_width + x1;
+            let idx_10 = y1 * grid_width + x0;
+            let idx_11 = y1 * grid_width + x1;
+            
+            let val_00 = f32(gpu_data_buffer[idx_00]);
+            let val_01 = f32(gpu_data_buffer[idx_01]);
+            let val_10 = f32(gpu_data_buffer[idx_10]);
+            let val_11 = f32(gpu_data_buffer[idx_11]);
+            
+            // Bilinear interpolation
+            let top = mix(val_00, val_01, fx);
+            let bottom = mix(val_10, val_11, fx);
+            let intensity = mix(top, bottom, fy);
+            
+            return vec4<f32>(intensity, intensity, intensity, 1.0);
         }
     } else {
         // Texture-based rendering (CPU data path)
