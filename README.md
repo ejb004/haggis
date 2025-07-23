@@ -35,15 +35,15 @@ use haggis::prelude::*;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create the application
     let mut app = haggis::default();
-    
+
     // Add a 3D object
     app.add_object("models/cube.obj")
         .with_material("gold")
         .with_transform([0.0, 0.0, 0.0], 1.0, 0.0);
-    
+
     // Create materials
     app.scene.add_material_rgb("gold", 1.0, 0.84, 0.0, 1.0, 0.5);
-    
+
     // Run the application
     app.run();
     Ok(())
@@ -57,19 +57,19 @@ use haggis::{simulation::BaseSimulation, CutPlane2D};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut app = haggis::default();
-    
+
     // Create a simulation with 2D visualization
     let mut base_sim = BaseSimulation::new("Conway's Game of Life");
     let mut cut_plane = CutPlane2D::new();
-    
+
     // Generate Conway's Game of Life data
     let game_data = generate_conway_data(128, 128);
     cut_plane.update_data(game_data, 128, 128);
     cut_plane.set_position([0.0, 2.0, 0.0].into());
-    
+
     base_sim.add_visualization("game_plane", cut_plane);
     app.attach_simulation(base_sim);
-    
+
     app.run();
     Ok(())
 }
@@ -78,12 +78,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 ## 📚 Examples
 
 ### Core Examples
+
 - **`cargo run --example test`** - Basic 3D object loading and rendering
 - **`cargo run --example conways_game_of_life`** - GPU-accelerated Conway's Game of Life
 - **`cargo run --example conways_game_of_life_cpu`** - CPU implementation for comparison
 - **`cargo run --example three_body`** - N-body gravitational simulation
 
-### Advanced Examples
+### MORE Examples
+
 - **`cargo run --example quickstart`** - Comprehensive getting started guide
 - High-level API examples in `examples/simulation_usage/high_level/`
 - Low-level GPU examples in `examples/simulation_usage/low_level/`
@@ -101,8 +103,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 ### Coordinate System
 
 Haggis uses a **Z-up coordinate system**:
+
 - X-axis: Right
-- Y-axis: Forward  
+- Y-axis: Forward
 - Z-axis: Up
 
 This matches industry standards and provides intuitive 3D object placement.
@@ -116,12 +119,14 @@ This matches industry standards and provides intuitive 3D object placement.
 ## 🎨 Visualization Features
 
 ### 2D Cut Plane Visualization
+
 - **Sharp/Smooth Filtering**: Toggle between pixelated and interpolated rendering
 - **Multiple Modes**: Heatmap, grid patterns, and point visualization
 - **GPU Buffer Support**: Direct GPU buffer visualization for zero-copy performance
 - **Interactive Controls**: Real-time adjustment of position, size, and rendering style
 
 ### 3D Rendering
+
 - **PBR Materials**: Physically based rendering with metallic/roughness
 - **Shadow Mapping**: Real-time shadow casting and receiving
 - **Object Loading**: OBJ file support with automatic material extraction
@@ -132,7 +137,7 @@ This matches industry standards and provides intuitive 3D object placement.
 ### Building from Source
 
 ```bash
-git clone https://github.com/your-username/haggis.git
+git clone https://github.com/ejb004/haggis.git
 cd haggis
 cargo build --release
 ```
@@ -197,4 +202,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-**Haggis** - *Because every good simulation needs a bit of Scottish engineering* 🏴󠁧󠁢󠁳󠁣󠁴󠁿
+**Haggis** - _Because every good simulation needs a bit of Scottish engineering_ 🏴󠁧󠁢󠁳󠁣󠁴󠁿
