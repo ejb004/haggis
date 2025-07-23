@@ -25,8 +25,8 @@ struct Material {
 @group(0) @binding(0) var<uniform> global: GlobalUniform;
 @group(1) @binding(0) var<uniform> transform: Transform;
 @group(2) @binding(0) var<uniform> material: Material;
-@group(3) @binding(0) var shadow_map: texture_2d<f32>;
-@group(3) @binding(1) var shadow_sampler: sampler;
+@group(3) @binding(0) var shadow_map: texture_depth_2d;
+@group(3) @binding(1) var shadow_sampler: sampler_comparison;
 
 struct VertexInput {
     @location(0) position: vec3<f32>,
@@ -82,38 +82,38 @@ fn calculate_shadow(in: VertexOutput, light_dir: vec3<f32>) -> f32 {
     let ndc = in.light_space_position.xyz / in.light_space_position.w;
     let shadow_coord = vec2<f32>(ndc.x * 0.5 + 0.5, -ndc.y * 0.5 + 0.5);
 
+    // Outside shadow map bounds = fully lit
     if (shadow_coord.x < 0.0 || shadow_coord.x > 1.0 || 
         shadow_coord.y < 0.0 || shadow_coord.y > 1.0) {
         return 1.0;
     }
 
-    let current_depth = ndc.z * 0.5 + 0.5;
-    let bias = 0.001;
-
-    let texel_size = 1.0 / 2048.0;
-    let offsets = array<vec2<f32>, 4>(
-        vec2<f32>(-0.25, -0.25) * texel_size,
-        vec2<f32>(0.25, -0.25) * texel_size,
-        vec2<f32>(-0.25, 0.25) * texel_size,
-        vec2<f32>(0.25, 0.25) * texel_size
-    );
-
+    // Use the raw NDC z for hardware comparison (don't remap to [0,1])
+    let current_depth = ndc.z;
+    
+    // Much larger bias to eliminate acne completely
+    let total_bias = 0.001;
+    
+    // 5x5 PCF for much smoother shadows - no center constraint for now
+    let texel_size = 1.0 / 4096.0;
+    let blur_radius = 6.0; // Even larger radius for maximum smoothing
     var shadow_sum = 0.0;
-    for (var i = 0; i < 4; i++) {
-        let stored_depth = textureSample(shadow_map, shadow_sampler, shadow_coord + offsets[i]).r;
-        let shadow_diff = current_depth - stored_depth - bias;
-
-        if (shadow_diff <= 0.0) {
-            shadow_sum += 1.0;
-        } else {
-            let softness = 50.0; // controls exponential falloff softness
-            let attenuation = exp(-shadow_diff * softness);
-            let min_light = 0.15;
-            shadow_sum += mix(min_light, 1.0, attenuation);
+    var sample_count = 0.0;
+    
+    for (var x = -2; x <= 2; x++) {
+        for (var y = -2; y <= 2; y++) {
+            let offset = vec2<f32>(f32(x), f32(y)) * texel_size * blur_radius;
+            let sample_coord = shadow_coord + offset;
+            let test_result = textureSampleCompare(shadow_map, shadow_sampler, sample_coord, current_depth - total_bias);
+            shadow_sum += test_result;
+            sample_count += 1.0;
         }
     }
-
-    return shadow_sum / 4.0;
+    
+    let pcf_result = shadow_sum / sample_count;
+    
+    // Convert to shadow factor (1.0 = lit, 0.2 = shadowed)
+    return mix(0.2, 1.0, pcf_result);
 }
 
 
@@ -155,14 +155,15 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let radiance = global.light_color * global.light_intensity * attenuation * 5.0;
 
     let shadow_factor = calculate_shadow(in, light_dir);
-    let ambient = vec3<f32>(0.15) * albedo * (1.0 - metallic * 0.3); // Brighter ambient
+    let ambient = vec3<f32>(0.12) * albedo * (1.0 - metallic * 0.2);
     let lo = (diffuse + specular) * radiance * n_dot_l * shadow_factor;
 
-    // Subtle rim lighting only for non-metals
-    let rim = pow(1.0 - max(dot(normal, view_dir), 0.0), 3.0);
-    let rim_light = rim * 0.3 * global.light_color * (1.0 - metallic); // Brighter rim
+    // Reduced rim lighting to prevent edge artifacts
+    let rim = pow(1.0 - max(dot(normal, view_dir), 0.0), 4.0);
+    let rim_light = rim * 0.15 * global.light_color * (1.0 - metallic);
 
-    let color = (ambient + lo + material.emissive + rim_light) * (shadow_factor + 0.5) / 2.0;
+    // Cleaner color calculation without additional shadow blending
+    let color = ambient + lo + material.emissive + rim_light;
 
     // Tone mapping and gamma correction
     let mapped = color / (color + vec3<f32>(1.0));

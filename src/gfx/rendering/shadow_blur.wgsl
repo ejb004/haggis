@@ -26,33 +26,6 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let texture_size = textureDimensions(input_texture);
-    let texel_size = vec2<f32>(1.0) / vec2<f32>(texture_size);
-    
-    // 9-tap Gaussian blur weights (normalized)
-    let weights = array<f32, 9>(
-        0.0625, 0.125, 0.0625,
-        0.125,  0.25,  0.125,
-        0.0625, 0.125, 0.0625
-    );
-    
-    // Sample offsets for 3x3 kernel
-    var offsets = array<vec2<f32>, 9>(
-        vec2<f32>(-2.0, -2.0), vec2<f32>(0.0, -2.0), vec2<f32>(2.0, -2.0),
-        vec2<f32>(-2.0,  0.0), vec2<f32>(0.0,  0.0), vec2<f32>(2.0,  0.0),
-        vec2<f32>(-2.0,  2.0), vec2<f32>(0.0,  2.0), vec2<f32>(2.0,  2.0)
-    );
-
-
-    
-    var result = vec4<f32>(0.0);
-    
-    // Apply Gaussian blur
-    for (var i = 0; i < 9; i++) {
-        let sample_uv = in.uv + offsets[i] * texel_size;
-        let sample_color = textureSample(input_texture, input_sampler, sample_uv);
-        result += sample_color * weights[i];
-    }
-    
-    return result;
+    // Pass-through - no blur, let shader handle all shadow work
+    return textureSample(input_texture, input_sampler, in.uv);
 }

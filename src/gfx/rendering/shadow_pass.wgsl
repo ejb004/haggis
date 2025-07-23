@@ -37,9 +37,6 @@ fn vs_main(model: VertexInput) -> VertexOutput {
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    // Store linear depth in red channel
-    let depth = in.clip_position.z / in.clip_position.w;
-    let linear_depth = depth * 0.5 + 0.5; // Convert from [-1,1] to [0,1]
-    
-    return vec4<f32>(linear_depth, 0.0, 0.0, 1.0);
+    // Use hardware fragment depth directly - most accurate
+    return vec4<f32>(0.0, 0.0, 0.0, 1.0); // Black output, depth goes to depth buffer
 }

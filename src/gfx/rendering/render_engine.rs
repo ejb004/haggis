@@ -133,7 +133,7 @@ impl RenderEngine {
         let depth_texture =
             TextureResource::create_depth_texture(&device, &config, "depth_texture");
 
-        let shadow_size = 1024u32 * 2u32;
+        let shadow_size = 4096u32; // Higher resolution for better contact shadows
 
         // 1. Create depth shadow map (for initial shadow rendering)
         let shadow_depth_texture = TextureResource::create_shadow_map(&device, shadow_size);
@@ -225,14 +225,14 @@ impl RenderEngine {
                         ty: wgpu::BindingType::Texture {
                             multisampled: false,
                             view_dimension: wgpu::TextureViewDimension::D2,
-                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            sample_type: wgpu::TextureSampleType::Depth, // Depth texture
                         },
                         count: None,
                     },
                     wgpu::BindGroupLayoutEntry {
                         binding: 1,
                         visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Comparison), // Comparison sampler
                         count: None,
                     },
                 ],
@@ -255,17 +255,31 @@ impl RenderEngine {
             ],
         });
 
+        // Create comparison sampler for hardware shadow mapping
+        let shadow_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::FilterMode::Nearest,
+            compare: Some(wgpu::CompareFunction::LessEqual), // Hardware shadow comparison
+            lod_min_clamp: 0.0,
+            lod_max_clamp: 32.0,
+            ..Default::default()
+        });
+
         let shadow_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Shadow Bind Group"),
             layout: &shadow_final_layout,
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&blurred_shadow_view),
+                    resource: wgpu::BindingResource::TextureView(&shadow_depth_texture.view), // Use depth texture
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&color_sampler),
+                    resource: wgpu::BindingResource::Sampler(&shadow_sampler), // Use comparison sampler
                 },
             ],
         });
@@ -314,22 +328,19 @@ impl RenderEngine {
         let _ = pipeline_manager.load_shader("shadow", include_str!("shadow_pass.wgsl"));
         let _ = pipeline_manager.load_shader("blur", include_str!("shadow_blur.wgsl"));
 
-        // Register shadow depth pass (NO DEPTH ATTACHMENT FOR DEBUGGING)
+        // Register shadow depth pass - NO CULLING to prevent light leaks
         pipeline_manager.register_pipeline(
             "Shadow",
             PipelineConfig::default()
                 .with_label("SHADOW")
                 .with_shader("shadow")
                 .with_depth_stencil(shadow_depth_texture.texture.clone())
+                .with_cull_mode(None) // No culling - render both front and back faces
                 .with_bind_group_layouts(vec![
                     global_bindings.bind_group_layouts().clone(),
                     transform_bind_group_layout.clone(),
                 ])
-                .with_color_targets(vec![Some(wgpu::ColorTargetState {
-                    format: wgpu::TextureFormat::Rgba8Unorm,
-                    blend: None,
-                    write_mask: wgpu::ColorWrites::ALL,
-                })]),
+                .with_color_targets(vec![]), // No color targets - depth only
         );
 
         // Register blur pass
@@ -433,14 +444,7 @@ impl RenderEngine {
             
             let mut shadow_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Shadow Depth Pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &self.shadow_color_view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::WHITE), // Clear to white (far depth)
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
+                color_attachments: &[], // No color attachment - depth only
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                     view: &self.shadow_depth_texture.view,
                     depth_ops: Some(wgpu::Operations {
@@ -449,7 +453,6 @@ impl RenderEngine {
                     }),
                     stencil_ops: None,
                 }),
-                // depth_stencil_attachment: None,
                 occlusion_query_set: None,
                 timestamp_writes: None,
             });
@@ -473,33 +476,9 @@ impl RenderEngine {
         // PASS 2: Convert depth to color (SKIP - we're already rendering depth as color)
         // The shadow pass now outputs depth directly to the shadow_color_texture
 
-        // PASS 3: Blur the shadow map (only if shadow was updated)
+        // PASS 3: Skip blur pass completely to test if it's causing stripes
         if needs_shadow_update {
-            let mut blur_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Shadow Blur Pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &self.blurred_shadow_view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Load,
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                occlusion_query_set: None,
-                timestamp_writes: None,
-            });
-
-            blur_pass.set_bind_group(0, &self.blur_bind_group, &[]);
-
-            if let Some(blur_pipeline) = self.pipeline_manager.get_pipeline("Blur") {
-                blur_pass.set_pipeline(blur_pipeline);
-                blur_pass.draw(0..3, 0..1);
-            } else {
-                #[cfg(debug_assertions)]
-                println!("❌ Blur pipeline not found!");
-            }
-
+            // Skip blur pass - use shadow_color_view directly
             // Mark shadow cache as valid after successful update
             self.shadow_cache.mark_valid(&self.light_config, &scene.objects);
         } else {
