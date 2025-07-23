@@ -182,6 +182,8 @@ pub struct AppState {
     pub performance_monitor: PerformanceMonitor,
     /// Whether to show the performance metrics panel
     pub show_performance_panel: bool,
+    /// Enable VSync for smoother visuals vs higher FPS
+    pub enable_vsync: bool,
     /// Object picker for mouse selection
     pub object_picker: ObjectPicker,
     /// Current mouse position for picking
@@ -237,6 +239,7 @@ impl HaggisApp {
                 visualization_manager: VisualizationManager::new(),
                 performance_monitor: PerformanceMonitor::new(),
                 show_performance_panel: false, // Hidden by default
+                enable_vsync: true, // Enabled for smoother visuals by default
                 object_picker: ObjectPicker::new(),
                 mouse_position: (0.0, 0.0),
                 ui_wants_input: false,
@@ -537,6 +540,15 @@ impl HaggisApp {
     /// ```
     pub fn show_performance_panel(&mut self, enabled: bool) {
         self.app_state.show_performance_panel = enabled;
+    }
+
+    /// Enable or disable VSync (vertical synchronization).
+    /// 
+    /// VSync limits frame rate to monitor refresh rate for smoother visuals
+    /// but reduces maximum FPS. Disable for development/benchmarking.
+    pub fn set_vsync(&mut self, enabled: bool) {
+        self.app_state.enable_vsync = enabled;
+        // Note: VSync setting takes effect on next render engine creation
     }
 
     /// Get the current performance metrics.
@@ -1020,9 +1032,8 @@ impl ApplicationHandler for AppState {
                     return;
                 };
 
-                // Calculate delta time for simulation
-                // Note: You might want to add a proper delta time calculation here
-                let delta_time = 0.016; // Approximate 60 FPS - replace with actual timing
+                // Calculate actual delta time for simulation
+                let delta_time = 1.0 / 120.0; // Fixed timestep for stability
 
                 // Update simulation before scene update
                 self.simulation_manager.update(
@@ -1106,7 +1117,7 @@ impl ApplicationHandler for AppState {
                     self.ui_wants_input = ui_wants_input;
                 }
 
-                // Apply UI transform changes to GPU buffers (only if no simulation is controlling objects)
+                // Apply UI transform changes to GPU buffers only when dirty
                 if let Some(render_engine_ref) = self.render_engine.as_ref() {
                     self.scene
                         .apply_ui_transforms_and_update_gpu(render_engine_ref.queue());

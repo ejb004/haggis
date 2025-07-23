@@ -118,7 +118,7 @@ impl RenderEngine {
             format,
             width,
             height,
-            present_mode: surface_capabilities.present_modes[0],
+            present_mode: wgpu::PresentMode::Fifo, // VSync enabled by default
             alpha_mode: surface_capabilities.alpha_modes[0],
             view_formats: vec![],
             desired_maximum_frame_latency: 2,
