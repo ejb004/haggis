@@ -809,11 +809,15 @@ impl ApplicationHandler for AppState {
                             );
                         }
 
-                        // Render simulation UI first
-                        self.simulation_manager.render_ui(ui, &mut self.scene);
+                        // Only render simulation UI if there's a simulation attached
+                        if self.simulation_manager.has_simulation() {
+                            self.simulation_manager.render_ui(ui, &mut self.scene);
+                        }
 
-                        // Render visualization UI (right side)
-                        self.visualization_manager.render_ui(ui);
+                        // Only render visualization UI if there are components
+                        if self.visualization_manager.has_components() {
+                            self.visualization_manager.render_ui(ui);
+                        }
 
                         // Then render user UI callback if provided
                         ui_callback(ui, &mut self.scene, &mut self.selected_object_index);
@@ -835,8 +839,16 @@ impl ApplicationHandler for AppState {
                             );
                         }
 
-                        self.simulation_manager.render_ui(ui, &mut self.scene);
-                        self.visualization_manager.render_ui(ui);
+                        // Only render simulation UI if there's a simulation attached
+                        if self.simulation_manager.has_simulation() {
+                            self.simulation_manager.render_ui(ui, &mut self.scene);
+                        }
+
+                        // Only render visualization UI if there are components
+                        if self.visualization_manager.has_components() {
+                            self.visualization_manager.render_ui(ui);
+                        }
+
                     });
                 }
 

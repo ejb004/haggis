@@ -28,7 +28,10 @@
       "Bash(cargo fmt:*)",
       "Bash(cargo clippy:*)",
       "Bash(rustc:*)",
-      "Bash(rg:*)"
+      "Bash(rg:*)",
+      "Bash(git add:*)",
+      "Bash(./test_debug_panel)",
+      "Bash(git checkout:*)"
     ],
     "deny": []
   }

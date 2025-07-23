@@ -17,6 +17,8 @@ fn main() {
 
     let mut app = haggis::default();
 
+    app.set_transform_panel_visible(false);
+
     // Set initial light theme
     app.set_ui_style(UiStyle::Light);
     // app.set_ui_style(UiStyle::Dark);

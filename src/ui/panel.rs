@@ -22,6 +22,10 @@ pub fn default_transform_panel(
     selected_index: &mut Option<usize>,
 ) {
     let display_size = ui.io().display_size;
+    // Guard against invalid display size that could cause crashes
+    if display_size[0] <= 0.0 || display_size[1] <= 0.0 {
+        return;
+    }
     let panel_width = (display_size[0] * 0.3).max(400.0).min(500.0); // Wider: 30% instead of 25%, min 400 instead of 350
     let panel_height = (display_size[1] * 0.85).max(600.0);
 
