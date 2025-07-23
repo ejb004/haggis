@@ -876,8 +876,11 @@ impl ApplicationHandler for AppState {
             let physical_size = window_handle.inner_size();
             let (width, height) = (physical_size.width, physical_size.height);
 
-            println!("Window created - Physical size: {}x{}", width, height);
-            println!("Window scale factor: {}", window_handle.scale_factor());
+            #[cfg(debug_assertions)]
+            {
+                println!("Window created - Physical size: {}x{}", width, height);
+                println!("Window scale factor: {}", window_handle.scale_factor());
+            }
 
             let window_clone = window_handle.clone();
             let renderer =
@@ -1237,19 +1240,21 @@ impl AppState {
             camera,
             &self.scene,
         ) {
-            println!(
-                "Picked object {} at distance {:.2}",
-                pick_result.object_index, pick_result.distance
-            );
+            #[cfg(debug_assertions)]
+            {
+                println!(
+                    "Picked object {} at distance {:.2}",
+                    pick_result.object_index, pick_result.distance
+                );
+                if let Some(object) = self.scene.objects.get(pick_result.object_index) {
+                    println!("Selected object: '{}'", object.name);
+                }
+            }
 
             // Update selected object index
             self.selected_object_index = Some(pick_result.object_index);
-
-            // Print object info for debugging
-            if let Some(object) = self.scene.objects.get(pick_result.object_index) {
-                println!("Selected object: '{}'", object.name);
-            }
         } else {
+            #[cfg(debug_assertions)]
             println!("No object picked");
             // Optionally deselect when clicking empty space
             // self.selected_object_index = None;

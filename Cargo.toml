@@ -136,3 +136,8 @@ path = "examples/conways_game_of_life/main.rs"
 [[example]]
 name = "conways_game_of_life_cpu"
 path = "examples/conways_game_of_life_cpu/main.rs"
+
+# Shadow Cache Demo - Performance optimization demonstration
+[[example]]
+name = "shadow_cache_demo"
+path = "examples/shadow_cache_demo.rs"

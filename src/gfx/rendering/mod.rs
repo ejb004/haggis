@@ -6,10 +6,12 @@
 pub mod pipeline_manager;
 pub mod render_engine;
 pub mod render_pass_ext;
+pub mod shadow_cache;
 pub mod visualization_renderer;
 
 // Re-export main types
 pub use pipeline_manager::{PipelineConfig, PipelineManager, PipelineStats};
 pub use render_engine::RenderEngine;
 pub use render_pass_ext::RenderPassExt;
+pub use shadow_cache::{ShadowCache, ShadowCacheStats};
 pub use visualization_renderer::{VisualizationPlane, VisualizationRenderer};

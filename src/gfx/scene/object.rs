@@ -46,6 +46,7 @@ impl Mesh {
 
     // Helper function to calculate face normals if OBJ doesn't have them
     pub fn calculate_face_normals(positions: &[f32], indices: &[u32]) -> Vec<f32> {
+        #[cfg(debug_assertions)]
         println!("Calculating face normals...");
         let vertex_count = positions.len() / 3;
         let mut normals = vec![0.0; positions.len()]; // Same length as positions

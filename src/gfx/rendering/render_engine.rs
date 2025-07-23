@@ -16,6 +16,7 @@ use crate::gfx::{
 };
 
 use super::pipeline_manager::{PipelineConfig, PipelineManager};
+use super::shadow_cache::ShadowCache;
 use super::visualization_renderer::{VisualizationPlane, VisualizationRenderer};
 
 /// Core rendering engine managing GPU resources and draw calls
@@ -48,6 +49,9 @@ pub struct RenderEngine {
     blur_bind_group: wgpu::BindGroup,   // For blur pass
 
     light_config: LightConfig,
+
+    // Shadow map caching system
+    shadow_cache: ShadowCache,
 
     // Visualization rendering system
     visualization_renderer: VisualizationRenderer,
@@ -377,6 +381,7 @@ impl RenderEngine {
             shadow_bind_group,
             blur_bind_group,
             light_config,
+            shadow_cache: ShadowCache::new(),
             visualization_renderer,
         }
     }
@@ -414,7 +419,18 @@ impl RenderEngine {
             });
 
         // PASS 1: Shadow mapping (render to depth AND color for depth extraction)
-        {
+        // Check if shadow map needs to be regenerated using cache
+        let needs_shadow_update = self.shadow_cache.needs_update(&self.light_config, &scene.objects);
+        
+        if needs_shadow_update {
+            // #[cfg(debug_assertions)]
+            // println!("🌒 Shadow map cache MISS - regenerating shadows");
+            
+            // Alternative: Environment variable debug
+            if std::env::var("HAGGIS_SHADOW_DEBUG").is_ok() {
+                eprintln!("SHADOW DEBUG: Regenerating shadow map");
+            }
+            
             let mut shadow_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Shadow Depth Pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -449,6 +465,7 @@ impl RenderEngine {
                     }
                 }
             } else {
+                #[cfg(debug_assertions)]
                 println!("❌ Shadow pipeline not found!");
             }
         }
@@ -456,8 +473,8 @@ impl RenderEngine {
         // PASS 2: Convert depth to color (SKIP - we're already rendering depth as color)
         // The shadow pass now outputs depth directly to the shadow_color_texture
 
-        // PASS 3: Blur the shadow map
-        {
+        // PASS 3: Blur the shadow map (only if shadow was updated)
+        if needs_shadow_update {
             let mut blur_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Shadow Blur Pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -479,7 +496,18 @@ impl RenderEngine {
                 blur_pass.set_pipeline(blur_pipeline);
                 blur_pass.draw(0..3, 0..1);
             } else {
+                #[cfg(debug_assertions)]
                 println!("❌ Blur pipeline not found!");
+            }
+
+            // Mark shadow cache as valid after successful update
+            self.shadow_cache.mark_valid(&self.light_config, &scene.objects);
+        } else {
+            // #[cfg(debug_assertions)]
+            // println!("✨ Shadow map cache HIT - skipping shadow passes");
+            
+            if std::env::var("HAGGIS_SHADOW_DEBUG").is_ok() {
+                eprintln!("SHADOW DEBUG: Using cached shadow map");
             }
         }
 
@@ -526,6 +554,7 @@ impl RenderEngine {
                             render_pass.set_bind_group(2, material_bind_group, &[]);
                             render_pass.draw_object(object);
                         } else {
+                            #[cfg(debug_assertions)]
                             println!(
                                 "Skipping '{}' - material '{}' has no GPU resources",
                                 object.name, material.name
@@ -699,5 +728,34 @@ impl RenderEngine {
     /// Used for creating compatible render targets and UI systems.
     pub fn surface_format(&self) -> wgpu::TextureFormat {
         self.format
+    }
+
+    /// Invalidates the shadow map cache, forcing regeneration on next frame
+    ///
+    /// Use this when you know that shadow-affecting changes have occurred
+    /// that the cache might not have detected automatically.
+    pub fn invalidate_shadow_cache(&mut self) {
+        self.shadow_cache.invalidate();
+    }
+
+    /// Returns whether the shadow cache is currently valid
+    ///
+    /// A valid cache means the shadow map does not need to be regenerated.
+    pub fn is_shadow_cache_valid(&self) -> bool {
+        self.shadow_cache.is_valid()
+    }
+
+    /// Clears all shadow cache state
+    ///
+    /// This forces a complete cache rebuild from scratch.
+    pub fn clear_shadow_cache(&mut self) {
+        self.shadow_cache.clear();
+    }
+
+    /// Gets shadow cache statistics for debugging and performance monitoring
+    ///
+    /// Returns information about cache state, tracked objects, and shadow bounds.
+    pub fn get_shadow_cache_stats(&self) -> super::shadow_cache::ShadowCacheStats {
+        self.shadow_cache.get_stats()
     }
 }

@@ -277,6 +277,7 @@ impl Material {
                 bind_group => Some(bind_group),
             },
             None => {
+                #[cfg(debug_assertions)]
                 println!(
                     "DEBUG: get_bind_group() for '{}' - no material_bindings",
                     self.name
