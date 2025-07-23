@@ -3,7 +3,6 @@
 //! This example demonstrates Conway's Game of Life using the 2D data plane visualization system.
 //! It follows the exact same pattern as cut_plane_demo but with Conway's Game of Life data.
 
-use haggis::visualization::ui::cut_plane_controls::FilterMode;
 use haggis::{simulation::BaseSimulation, CutPlane2D};
 use std::time::Instant;
 
@@ -388,43 +387,6 @@ impl haggis::simulation::traits::Simulation for ConwaysCpuSimulation {
                         [0.0, 1.0, 0.0, 1.0],
                         &format!("▶ Running ({:.1} gen/sec)", self.speed),
                     );
-                }
-
-                ui.separator();
-
-                // Filter mode toggle
-                ui.text("Rendering Style:");
-                let current_filter = self
-                    .base
-                    .get_visualization("data_plane")
-                    .and_then(|v| {
-                        v.as_any()
-                            .downcast_ref::<CutPlane2D>()
-                            .map(|cp| cp.get_filter_mode())
-                    })
-                    .unwrap_or(FilterMode::Sharp);
-
-                if ui.radio_button_bool("Sharp (Pixelated)", current_filter == FilterMode::Sharp) {
-                    if let Some(data_plane) = self.base.get_visualization_mut("data_plane") {
-                        if let Some(cut_plane) =
-                            data_plane.as_any_mut().downcast_mut::<CutPlane2D>()
-                        {
-                            cut_plane.set_filter_mode(FilterMode::Sharp);
-                        }
-                    }
-                }
-
-                if ui.radio_button_bool(
-                    "Smooth (Interpolated)",
-                    current_filter == FilterMode::Smooth,
-                ) {
-                    if let Some(data_plane) = self.base.get_visualization_mut("data_plane") {
-                        if let Some(cut_plane) =
-                            data_plane.as_any_mut().downcast_mut::<CutPlane2D>()
-                        {
-                            cut_plane.set_filter_mode(FilterMode::Smooth);
-                        }
-                    }
                 }
 
                 ui.separator();

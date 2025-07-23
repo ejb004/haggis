@@ -24,11 +24,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     haggis
         .add_object("examples/test/f1.obj")
         .with_material("red") // Assign steel material
-        .with_transform([0.0, -0.665, 0.0], 0.8, -30.0);
+        .with_transform([0.0, -0.665, 0.0], 0.8, 0.0);
     haggis
         .add_object("examples/test/cube.obj")
         .with_material("gold") // Assign steel material
-        .with_transform([0.0, -0.665, 0.0], 0.8, -30.0);
+        .with_transform([0.0, -0.665, 0.0], 0.8, 0.0);
 
     haggis
         .add_object("examples/test/ground.obj")

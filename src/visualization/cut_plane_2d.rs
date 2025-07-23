@@ -265,7 +265,7 @@ impl CutPlane2D {
     }
 
     /// Apply grid pattern to 2D data
-    fn apply_grid_pattern(&self, data: &[f32], width: u32, height: u32) -> Vec<f32> {
+    fn apply_grid_pattern(&self, data: &[f32], width: u32, _height: u32) -> Vec<f32> {
         let mut result = Vec::with_capacity(data.len());
         let checker_size = 8;
 
@@ -390,7 +390,6 @@ impl VisualizationComponent for CutPlane2D {
                 material.update_filter_mode(queue, self.filter_mode);
                 self.last_filter_mode = self.filter_mode;
                 self.needs_filter_update = false;
-                println!("🎨 Filter mode updated to: {:?}", self.filter_mode); // Debug output
             }
         }
     }
@@ -418,6 +417,17 @@ impl VisualizationComponent for CutPlane2D {
         if ui.radio_button_bool("Points", self.mode == VisualizationMode::Points) {
             self.mode = VisualizationMode::Points;
             mode_changed = true;
+        }
+
+        ui.separator();
+
+        // Filter mode controls (Sharp vs Smooth interpolation)
+        if ui.radio_button_bool("Sharp", self.filter_mode == FilterMode::Sharp) {
+            self.set_filter_mode(FilterMode::Sharp);
+        }
+        ui.same_line();
+        if ui.radio_button_bool("Smooth", self.filter_mode == FilterMode::Smooth) {
+            self.set_filter_mode(FilterMode::Smooth);
         }
 
         ui.separator();

@@ -24,6 +24,24 @@ impl Scene {
         }
     }
 
+    /// Converts coordinate data from Y-up to Z-up coordinate system
+    /// 
+    /// This fixes the common issue where OBJ files exported from Y-up programs
+    /// (like Blender) appear rotated 90 degrees when loaded into Z-up engines.
+    /// 
+    /// Transformation: (x, y, z) -> (x, -z, y)
+    fn convert_y_up_to_z_up(data: &mut [f32]) {
+        for i in 0..data.len() / 3 {
+            let base = i * 3;
+            let old_y = data[base + 1];
+            let old_z = data[base + 2];
+            
+            // Y-up to Z-up conversion: (x, y, z) -> (x, -z, y)
+            data[base + 1] = -old_z;  // new Y = -old Z
+            data[base + 2] = old_y;   // new Z = old Y
+        }
+    }
+
     /// Updates the scene (camera matrices, etc.)
     pub fn update(&mut self) {
         self.camera_manager.camera.update_view_proj();
@@ -100,15 +118,22 @@ impl Scene {
             //     mesh.indices.len() / 3
             // );
 
+            // Convert from Y-up (OBJ standard) to Z-up (Haggis coordinate system)
+            // This fixes the 90-degree rotation issue where objects appear tilted
+            let mut positions = mesh.positions.clone();
+            Self::convert_y_up_to_z_up(&mut positions);
+
             // Use normals from OBJ if available, otherwise calculate them
             let normals = if !mesh.normals.is_empty() && mesh.normals.len() == mesh.positions.len()
             {
-                mesh.normals.clone()
+                let mut normals = mesh.normals.clone();
+                Self::convert_y_up_to_z_up(&mut normals);
+                normals
             } else {
-                Mesh::calculate_face_normals(&mesh.positions, &mesh.indices)
+                Mesh::calculate_face_normals(&positions, &mesh.indices)
             };
 
-            let our_mesh = Mesh::new(mesh.positions.clone(), normals, mesh.indices.clone());
+            let our_mesh = Mesh::new(positions, normals, mesh.indices.clone());
             meshes.push(our_mesh);
         }
 

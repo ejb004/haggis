@@ -717,30 +717,6 @@ impl haggis::simulation::traits::Simulation for ConwaysGpuSimulation {
                 }
 
                 ui.separator();
-
-                // Filter mode toggle
-                ui.text("Rendering Style:");
-                let current_filter = self.base.get_visualization("data_plane")
-                    .and_then(|v| v.as_any().downcast_ref::<CutPlane2D>().map(|cp| cp.get_filter_mode()))
-                    .unwrap_or(FilterMode::Sharp);
-                
-                if ui.radio_button_bool("Sharp (Pixelated)", current_filter == FilterMode::Sharp) {
-                    if let Some(data_plane) = self.base.get_visualization_mut("data_plane") {
-                        if let Some(cut_plane) = data_plane.as_any_mut().downcast_mut::<CutPlane2D>() {
-                            cut_plane.set_filter_mode(FilterMode::Sharp);
-                        }
-                    }
-                }
-                
-                if ui.radio_button_bool("Smooth (Interpolated)", current_filter == FilterMode::Smooth) {
-                    if let Some(data_plane) = self.base.get_visualization_mut("data_plane") {
-                        if let Some(cut_plane) = data_plane.as_any_mut().downcast_mut::<CutPlane2D>() {
-                            cut_plane.set_filter_mode(FilterMode::Smooth);
-                        }
-                    }
-                }
-
-                ui.separator();
                 ui.text("GPU Compute Features:");
                 ui.bullet_text("High-performance cellular automaton");
                 ui.bullet_text("Ping-pong buffer optimization");
