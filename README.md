@@ -70,7 +70,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 - High-level API examples in `examples/simulation_usage/high_level/`
 - Low-level GPU examples in `examples/simulation_usage/low_level/`
 
-![Conways Game of Life Rendering](assets/test.png)
+![Conways Game of Life Rendering](assets/Test.png)
 
 ## 📸 Camera Controls
 
