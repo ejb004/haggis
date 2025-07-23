@@ -23,14 +23,14 @@
 
 use haggis::prelude::*;
 use haggis::{
-    simulation::BaseSimulation, 
-    visualization::{traits::VisualizationComponent, ui::cut_plane_controls::FilterMode}, 
+    simulation::BaseSimulation,
+    visualization::{traits::VisualizationComponent, ui::cut_plane_controls::FilterMode},
 };
 use std::sync::Arc;
 
 /// Grid size for the Game of Life
-const GRID_WIDTH: u32 = 128;
-const GRID_HEIGHT: u32 = 128;
+const GRID_WIDTH: u32 = 256;
+const GRID_HEIGHT: u32 = 256;
 
 /// Classic Game of Life patterns
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -482,15 +482,21 @@ impl ConwaysGpuSimulation {
             };
 
             // Preserve current filter mode when recreating visualization
-            let current_filter_mode = self.base.get_visualization("data_plane")
-                .and_then(|v| v.as_any().downcast_ref::<CutPlane2D>().map(|cp| cp.get_filter_mode()))
+            let current_filter_mode = self
+                .base
+                .get_visualization("data_plane")
+                .and_then(|v| {
+                    v.as_any()
+                        .downcast_ref::<CutPlane2D>()
+                        .map(|cp| cp.get_filter_mode())
+                })
                 .unwrap_or(FilterMode::Sharp);
 
             // Create CutPlane2D that references GPU buffer directly
             let mut data_plane = CutPlane2D::new();
             data_plane.set_position(Vector3::new(0.0, 2.0, 0.0));
             data_plane.set_size(2.0);
-            
+
             // Restore the filter mode BEFORE updating GPU buffer
             data_plane.set_filter_mode(current_filter_mode);
 
@@ -537,7 +543,6 @@ impl ConwaysGpuSimulation {
         }
     }
 
-
     /// Run one GPU compute step
     fn run_gpu_compute_step(&mut self, device: &Device, queue: &Queue) {
         if let Some(ref mut gpu_resources) = self.gpu_resources {
@@ -563,7 +568,7 @@ impl ConwaysGpuSimulation {
                 compute_pass.set_bind_group(0, bind_group, &[]);
 
                 // Dispatch compute shader
-                let workgroup_size = 8;
+                let workgroup_size = 16;
                 let num_workgroups_x = (self.width + workgroup_size - 1) / workgroup_size;
                 let num_workgroups_y = (self.height + workgroup_size - 1) / workgroup_size;
 
@@ -756,10 +761,10 @@ const CONWAY_COMPUTE_SHADER: &str = r#"
 @group(0) @binding(1) var<storage, read_write> output_buffer: array<u32>;
 
 // Grid dimensions - these should match the Rust constants
-const GRID_WIDTH: u32 = 128u;
-const GRID_HEIGHT: u32 = 128u;
+const GRID_WIDTH: u32 = 256u;
+const GRID_HEIGHT: u32 = 256u;
 
-@compute @workgroup_size(8, 8)
+@compute @workgroup_size(16, 16)
 fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let x = global_id.x;
     let y = global_id.y;

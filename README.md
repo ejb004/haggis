@@ -18,6 +18,8 @@ Haggis provides a high-level API for creating real-time 3D simulations with GPU 
 - **🔄 Flexible Architecture**: Support for both CPU and GPU simulation backends
 - **📐 Z-up Coordinate System**: Industry-standard coordinate system for 3D graphics
 
+![Conways Game of Life Demo](assets/GOL_gif.gif)
+
 ## 🚀 Quick Start
 
 Add haggis to your `Cargo.toml`:
@@ -67,6 +69,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 - **`cargo run --example quickstart`** - Comprehensive getting started guide
 - High-level API examples in `examples/simulation_usage/high_level/`
 - Low-level GPU examples in `examples/simulation_usage/low_level/`
+
+![Conways Game of Life Rendering](assets/test.png)
 
 ## 🏗️ Architecture
 
@@ -172,6 +176,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## 🚧 Roadmap
 
 - [ ] Fix shadow map to cover all working area and optimise for caching
+- [ ] Optimise GPU access wrt both rendering and simulations
 - [ ] Additional file format support (glTF, FBX)
 - [ ] Advanced particle systems
 - [ ] Networking for distributed simulations
