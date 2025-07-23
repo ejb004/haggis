@@ -39,6 +39,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // let cut_plane = CutPlane2D::new();
     // haggis.add_visualization("cut_plane", cut_plane);
 
+    haggis.show_performance_panel(true);
+
     haggis.set_ui(|ui, scene, selected_index| {
         default_transform_panel(ui, scene, selected_index);
     });

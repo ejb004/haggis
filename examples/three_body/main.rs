@@ -817,12 +817,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     haggis.attach_simulation(simulation);
     println!("✅ Created and attached three-body orbital simulation");
 
-    // Set up the user interface
+    // Set up the user interface and enable performance monitoring
+    haggis.show_performance_panel(true); // Show FPS and performance metrics
     haggis.set_ui(|ui, scene, selected_index| {
         // Show the default object inspector (useful for debugging)
         default_transform_panel(ui, scene, selected_index);
     });
-    println!("✅ Set up user interface");
+    println!("✅ Set up user interface with performance monitoring");
 
     // Start the simulation
     println!();

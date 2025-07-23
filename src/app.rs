@@ -63,6 +63,7 @@ use crate::{
         rendering::render_engine::RenderEngine,
         scene::{object::ObjectBuilder, scene::Scene},
     },
+    performance::PerformanceMonitor,
     simulation::{manager::SimulationManager, traits::Simulation},
     ui::{manager::UiManager, panel::default_transform_panel, UiFont, UiStyle},
     visualization::{manager::VisualizationManager, traits::VisualizationComponent},
@@ -176,6 +177,10 @@ pub struct AppState {
     pub simulation_manager: SimulationManager,
     /// Visualization management system
     pub visualization_manager: VisualizationManager,
+    /// Performance monitoring system
+    pub performance_monitor: PerformanceMonitor,
+    /// Whether to show the performance metrics panel
+    pub show_performance_panel: bool,
 }
 
 impl HaggisApp {
@@ -223,6 +228,8 @@ impl HaggisApp {
                 selected_object_index: Some(0),
                 simulation_manager: SimulationManager::new(),
                 visualization_manager: VisualizationManager::new(),
+                performance_monitor: PerformanceMonitor::new(),
+                show_performance_panel: false, // Hidden by default
             },
         }
     }
@@ -499,6 +506,65 @@ impl HaggisApp {
         self.app_state.ui_callback = Some(Box::new(ui_fn));
     }
 
+    /// Enable or disable the performance metrics panel.
+    ///
+    /// When enabled, a performance metrics panel will be displayed showing:
+    /// - Current FPS and frame time
+    /// - Frame time statistics (min/max/average)
+    /// - Render statistics (draw calls, vertex count)
+    /// - Frame time history graph
+    ///
+    /// # Arguments
+    ///
+    /// * `enabled` - Whether to show the performance panel
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// let mut app = haggis::default();
+    /// app.show_performance_panel(true); // Enable performance monitoring
+    /// app.run();
+    /// ```
+    pub fn show_performance_panel(&mut self, enabled: bool) {
+        self.app_state.show_performance_panel = enabled;
+    }
+
+    /// Get the current performance metrics.
+    ///
+    /// Returns a reference to the current performance metrics which include
+    /// FPS, frame time, memory usage, and render statistics.
+    ///
+    /// # Returns
+    ///
+    /// A reference to the current [`PerformanceMetrics`](crate::performance::PerformanceMetrics).
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// let app = haggis::default();
+    /// let metrics = app.get_performance_metrics();
+    /// println!("Current FPS: {:.1}", metrics.fps);
+    /// ```
+    pub fn get_performance_metrics(&self) -> &crate::performance::PerformanceMetrics {
+        self.app_state.performance_monitor.get_metrics()
+    }
+
+    /// Reset performance metrics and history.
+    ///
+    /// This clears all accumulated performance data and restarts tracking
+    /// from the current frame. Useful for benchmarking specific scenarios.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// let mut app = haggis::default();
+    /// // ... run for a while ...
+    /// app.reset_performance_metrics(); // Start fresh
+    /// ```
+    pub fn reset_performance_metrics(&mut self) {
+        self.app_state.performance_monitor.reset();
+    }
+
     /// Runs the application.
     ///
     /// Consumes the [`HaggisApp`] and starts the main event loop.
@@ -595,6 +661,171 @@ impl HaggisApp {
     /// [`add_object`]: Self::add_object
     pub fn add_object_simple(&mut self, object_path: &str) {
         self.app_state.scene.add_object(object_path);
+    }
+
+    /// Add a procedural cube to the scene.
+    ///
+    /// Creates a unit cube (1x1x1) centered at the origin with proper normals and texture coordinates.
+    /// The cube can be scaled and positioned using the returned [`ObjectBuilder`].
+    ///
+    /// # Returns
+    ///
+    /// An [`ObjectBuilder`] for further configuration of the cube.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// let mut app = haggis::default();
+    /// 
+    /// // Add a simple cube
+    /// app.add_cube();
+    ///
+    /// // Add a cube with custom properties
+    /// app.add_cube()
+    ///     .with_name("My Cube")
+    ///     .with_material("red")
+    ///     .with_transform([0.0, 0.0, 2.0], 0.5, 45.0);
+    /// ```
+    pub fn add_cube(&mut self) -> ObjectBuilder {
+        let object_index = self.app_state.scene.objects.len();
+        let cube_geometry = crate::gfx::geometry::generate_cube();
+        self.app_state.scene.add_procedural_object(cube_geometry, "Cube");
+
+        // Sync transform for UI
+        if let Some(object) = self.app_state.scene.objects.get_mut(object_index) {
+            object.sync_transform_to_ui();
+        }
+
+        ObjectBuilder::new(self, object_index)
+    }
+
+    /// Add a procedural sphere to the scene.
+    ///
+    /// Creates a UV sphere with the specified resolution. Higher values create smoother spheres
+    /// but use more vertices.
+    ///
+    /// # Arguments
+    ///
+    /// * `longitude_segments` - Number of vertical segments (longitude lines). Default: 32
+    /// * `latitude_segments` - Number of horizontal segments (latitude lines). Default: 16
+    ///
+    /// # Returns
+    ///
+    /// An [`ObjectBuilder`] for further configuration of the sphere.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// let mut app = haggis::default();
+    /// 
+    /// // Add a smooth sphere
+    /// app.add_sphere(32, 16)
+    ///     .with_name("Smooth Sphere")
+    ///     .with_material("blue");
+    ///
+    /// // Add a low-poly sphere
+    /// app.add_sphere(8, 6)
+    ///     .with_name("Low Poly Sphere")
+    ///     .with_transform([2.0, 0.0, 0.0], 1.0, 0.0);
+    /// ```
+    pub fn add_sphere(&mut self, longitude_segments: u32, latitude_segments: u32) -> ObjectBuilder {
+        let object_index = self.app_state.scene.objects.len();
+        let sphere_geometry = crate::gfx::geometry::generate_sphere(longitude_segments, latitude_segments);
+        self.app_state.scene.add_procedural_object(sphere_geometry, "Sphere");
+
+        // Sync transform for UI
+        if let Some(object) = self.app_state.scene.objects.get_mut(object_index) {
+            object.sync_transform_to_ui();
+        }
+
+        ObjectBuilder::new(self, object_index)
+    }
+
+    /// Add a procedural plane to the scene.
+    ///
+    /// Creates a plane in the XY plane (horizontal in Z-up coordinate system) with the specified
+    /// dimensions and subdivision level.
+    ///
+    /// # Arguments
+    ///
+    /// * `width` - Width of the plane (X direction)
+    /// * `height` - Height of the plane (Y direction)
+    /// * `width_segments` - Number of subdivisions along width. Default: 1
+    /// * `height_segments` - Number of subdivisions along height. Default: 1
+    ///
+    /// # Returns
+    ///
+    /// An [`ObjectBuilder`] for further configuration of the plane.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// let mut app = haggis::default();
+    /// 
+    /// // Add a simple ground plane
+    /// app.add_plane(10.0, 10.0, 1, 1)
+    ///     .with_name("Ground")
+    ///     .with_material("grass");
+    ///
+    /// // Add a subdivided plane for deformation
+    /// app.add_plane(5.0, 5.0, 8, 8)
+    ///     .with_name("Subdivided Plane")
+    ///     .with_transform([0.0, 0.0, 0.0], 1.0, 0.0);
+    /// ```
+    pub fn add_plane(&mut self, width: f32, height: f32, width_segments: u32, height_segments: u32) -> ObjectBuilder {
+        let object_index = self.app_state.scene.objects.len();
+        let plane_geometry = crate::gfx::geometry::generate_plane(width, height, width_segments, height_segments);
+        self.app_state.scene.add_procedural_object(plane_geometry, "Plane");
+
+        // Sync transform for UI
+        if let Some(object) = self.app_state.scene.objects.get_mut(object_index) {
+            object.sync_transform_to_ui();
+        }
+
+        ObjectBuilder::new(self, object_index)
+    }
+
+    /// Add a procedural cylinder to the scene.
+    ///
+    /// Creates a cylinder with the specified radius, height, and number of segments.
+    /// The cylinder extends from -height/2 to height/2 along the Z-axis.
+    ///
+    /// # Arguments
+    ///
+    /// * `radius` - Radius of the cylinder
+    /// * `height` - Height of the cylinder (along Z-axis)
+    /// * `segments` - Number of circular segments. Higher values create smoother cylinders
+    ///
+    /// # Returns
+    ///
+    /// An [`ObjectBuilder`] for further configuration of the cylinder.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// let mut app = haggis::default();
+    /// 
+    /// // Add a smooth cylinder
+    /// app.add_cylinder(1.0, 2.0, 32)
+    ///     .with_name("Pillar")
+    ///     .with_material("stone");
+    ///
+    /// // Add a low-poly cylinder
+    /// app.add_cylinder(0.5, 1.5, 6)
+    ///     .with_name("Hex Pillar")
+    ///     .with_transform([3.0, 0.0, 0.0], 1.0, 0.0);
+    /// ```
+    pub fn add_cylinder(&mut self, radius: f32, height: f32, segments: u32) -> ObjectBuilder {
+        let object_index = self.app_state.scene.objects.len();
+        let cylinder_geometry = crate::gfx::geometry::generate_cylinder(radius, height, segments);
+        self.app_state.scene.add_procedural_object(cylinder_geometry, "Cylinder");
+
+        // Sync transform for UI
+        if let Some(object) = self.app_state.scene.objects.get_mut(object_index) {
+            object.sync_transform_to_ui();
+        }
+
+        ObjectBuilder::new(self, object_index)
     }
 }
 
@@ -794,6 +1025,9 @@ impl ApplicationHandler for AppState {
                 self.scene
                     .update_materials(render_engine.device(), render_engine.queue());
 
+                // Begin performance frame tracking
+                self.performance_monitor.begin_frame();
+
                 // Update phase: Scene logic and UI interaction
                 self.scene.update();
                 if let (Some(ui_manager), Some(ui_callback)) =
@@ -808,6 +1042,11 @@ impl ApplicationHandler for AppState {
 
                         // Render visualization UI (right side)
                         self.visualization_manager.render_ui(ui);
+
+                        // Render performance metrics if enabled
+                        if self.show_performance_panel {
+                            self.performance_monitor.render_ui(ui);
+                        }
 
                         // Then render user UI callback if provided
                         ui_callback(ui, &mut self.scene, &mut self.selected_object_index);
@@ -831,6 +1070,11 @@ impl ApplicationHandler for AppState {
 
                         self.simulation_manager.render_ui(ui, &mut self.scene);
                         self.visualization_manager.render_ui(ui);
+
+                        // Render performance metrics if enabled
+                        if self.show_performance_panel {
+                            self.performance_monitor.render_ui(ui);
+                        }
                     });
                 }
 
@@ -873,6 +1117,9 @@ impl ApplicationHandler for AppState {
                     render_engine
                         .render_frame_with_visualizations(&self.scene, &visualization_planes);
                 }
+
+                // End performance frame tracking
+                self.performance_monitor.end_frame();
             }
             _ => (),
         }

@@ -50,6 +50,7 @@ pub use crate::default;
 // Re-export graphics and scene types
 pub use crate::gfx::scene::Scene;
 pub use crate::gfx::camera::CameraManager;
+pub use crate::gfx::geometry::{GeometryData, generate_cube, generate_sphere, generate_plane, generate_cylinder};
 
 // Re-export simulation framework 
 pub use crate::simulation::traits::Simulation;
@@ -64,6 +65,9 @@ pub use crate::visualization::{
     VisualizationComponent, 
     VisualizationManager
 };
+
+// Re-export performance monitoring
+pub use crate::performance::{PerformanceMonitor, PerformanceMetrics};
 
 // Re-export common external dependencies
 pub use cgmath::{Vector3, InnerSpace, Zero};

@@ -50,6 +50,7 @@
 
 pub mod app;
 pub mod gfx;
+pub mod performance;
 pub mod prelude;
 pub mod simulation;
 pub mod ui;

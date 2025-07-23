@@ -162,6 +162,35 @@ impl Scene {
         self.objects.push(object);
     }
 
+    /// Add a procedural geometry object to the scene
+    ///
+    /// This method creates objects from procedurally generated geometry data,
+    /// eliminating the need for external model files.
+    ///
+    /// # Arguments
+    /// * `geometry_data` - The procedural geometry data
+    /// * `name` - Name for the object
+    pub fn add_procedural_object(&mut self, geometry_data: crate::gfx::geometry::GeometryData, name: &str) {
+        let (vertices, indices) = geometry_data.to_scene_format();
+        
+        // Extract positions and normals from vertex data
+        let positions: Vec<f32> = vertices.iter()
+            .flat_map(|v| v.position.iter())
+            .cloned()
+            .collect();
+            
+        let normals: Vec<f32> = vertices.iter()
+            .flat_map(|v| v.normal.iter())
+            .cloned()
+            .collect();
+        
+        let mesh = Mesh::new(positions, normals, indices);
+        let mut object = Object::new(vec![mesh]);
+        object.set_name(name.to_string());
+        
+        self.objects.push(object);
+    }
+
     /// Creates a new material and adds it to the material manager
     ///
     /// # Arguments

@@ -349,32 +349,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("✅ Created materials (red, green, blue, ground)");
 
-    // STEP 3: Add 3D objects to the scene
+    // STEP 3: Add 3D objects to the scene (using procedural geometry!)
     // These are the visual representations of our particles
     haggis
-        .add_object("examples/test/cube.obj") // Load a cube 3D model
+        .add_cube() // Create a procedural cube
         .with_material("red_cube") // Make it red
         .with_name("particle_1") // Give it a name
         .with_transform([0.0, 0.0, 0.0], 0.2, 0.0); // Position, scale, rotation
 
     haggis
-        .add_object("examples/test/cube.obj")
+        .add_cube()
         .with_material("green_cube")
         .with_name("particle_2")
         .with_transform([0.0, 0.0, 0.0], 0.15, 0.0);
 
     haggis
-        .add_object("examples/test/cube.obj")
+        .add_cube()
         .with_material("blue_cube")
         .with_name("particle_3")
         .with_transform([0.0, 0.0, 0.0], 0.25, 0.0);
 
     // Add ground plane (static, not affected by physics)
     haggis
-        .add_object("examples/test/ground.obj")
+        .add_plane(10.0, 10.0, 1, 1) // Create a 10x10 plane
         .with_material("ground")
         .with_name("ground_plane")
-        .with_transform([0.0, 0.0, 0.0], 5.0, 0.0); // Large scale for ground
+        .with_transform([0.0, 0.0, 0.0], 1.0, 0.0);
 
     println!("✅ Added 3 cube objects and ground plane to the scene");
 
@@ -384,13 +384,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     haggis.attach_simulation(simulation);
     println!("✅ Created and attached particle simulation");
 
-    // STEP 5: Set up the user interface
+    // STEP 5: Set up the user interface and enable performance monitoring
     // This defines what controls and panels are shown
+    haggis.show_performance_panel(true); // Enable performance metrics
     haggis.set_ui(|ui, scene, selected_index| {
         // Show the default object inspector panel
         default_transform_panel(ui, scene, selected_index);
     });
-    println!("✅ Set up user interface");
+    println!("✅ Set up user interface with performance monitoring");
 
     // STEP 6: Run the application!
     // This starts the main loop: update physics, render graphics, handle input

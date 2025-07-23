@@ -37,6 +37,7 @@
 //! [`Scene`]: scene::Scene
 
 pub mod camera;
+pub mod geometry;
 pub mod rendering;
 pub mod resources;
 pub mod scene;

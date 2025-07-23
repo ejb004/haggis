@@ -850,6 +850,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_name("Reference Cube at Plane Position");
 
     // Run the application
+
+    app.show_performance_panel(true);
     app.run();
 
     Ok(())
