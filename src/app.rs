@@ -800,15 +800,9 @@ impl ApplicationHandler for AppState {
                     (self.ui_manager.as_mut(), &self.ui_callback)
                 {
                     let ui_wants_input = ui_manager.update_logic(window, |ui| {
-                        // Render default object transformation UI (left side) if enabled
-                        if self.show_transform_panel {
-                            default_transform_panel(
-                                ui,
-                                &mut self.scene,
-                                &mut self.selected_object_index,
-                            );
-                        }
-
+                        // When user provides a UI callback, they have full control over UI
+                        // The user can call default_transform_panel() if they want it
+                        
                         // Render simulation UI first
                         self.simulation_manager.render_ui(ui, &mut self.scene);
 

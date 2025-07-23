@@ -21,14 +21,12 @@
 //!
 //! Run with: `cargo run --example conways_game_of_life`
 
-use cgmath::Vector3;
+use haggis::prelude::*;
 use haggis::{
     simulation::BaseSimulation, 
     visualization::{traits::VisualizationComponent, ui::cut_plane_controls::FilterMode}, 
-    CutPlane2D,
 };
-use std::{time::Instant, sync::Arc};
-use wgpu::{Device, Queue};
+use std::sync::Arc;
 
 /// Grid size for the Game of Life
 const GRID_WIDTH: u32 = 128;

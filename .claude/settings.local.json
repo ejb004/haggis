@@ -31,7 +31,8 @@
       "Bash(rg:*)",
       "Bash(git add:*)",
       "Bash(./test_debug_panel)",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(RUST_LOG=debug cargo check)"
     ],
     "deny": []
   }

@@ -29,12 +29,7 @@
 //! - Celestial mechanics principles
 //! - Stable periodic solutions to chaotic systems
 
-use cgmath::{InnerSpace, Vector3, Zero};
-use haggis::gfx::scene::Scene;
-use haggis::simulation::traits::Simulation;
-use haggis::ui::default_transform_panel;
-use imgui::Ui;
-use std::collections::VecDeque;
+use haggis::prelude::*;
 
 /// Gravitational constant (scaled for the simulation)
 /// In reality, G ≈ 6.674 × 10^-11 m³ kg⁻¹ s⁻²

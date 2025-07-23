@@ -16,13 +16,7 @@
 //! cargo run --example simple_particles_cpu
 //! ```
 
-use cgmath::Vector3;
-use haggis::gfx::scene::Scene;
-use haggis::simulation::traits::Simulation;
-use haggis::ui::default_transform_panel;
-use imgui::Ui;
-use std::collections::VecDeque;
-use std::time::Instant;
+use haggis::prelude::*;
 
 /// Simple particle representation
 #[derive(Clone)]

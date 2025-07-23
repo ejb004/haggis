@@ -17,13 +17,7 @@
 //! cargo run --example performance_comparison_cpu
 //! ```
 
-use cgmath::{InnerSpace, Vector3};
-use haggis::gfx::scene::Scene;
-use haggis::simulation::traits::Simulation;
-use haggis::ui::default_transform_panel;
-use imgui::Ui;
-use std::collections::VecDeque;
-use std::time::Instant;
+use haggis::prelude::*;
 
 /// Advanced particle with extended properties for low-level control
 #[derive(Clone, Debug)]

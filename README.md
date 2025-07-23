@@ -30,49 +30,27 @@ haggis = "0.1"
 ### Basic Example
 
 ```rust
-use haggis::prelude::*;
-
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create the application
     let mut app = haggis::default();
 
     // Add a 3D object
-    app.add_object("models/cube.obj")
+    app.add_object("src/monkey.obj")
         .with_material("gold")
         .with_transform([0.0, 0.0, 0.0], 1.0, 0.0);
 
     // Create materials
-    app.scene.add_material_rgb("gold", 1.0, 0.84, 0.0, 1.0, 0.5);
+    app.app_state
+        .scene
+        .add_material_rgb("gold", 1.0, 0.84, 0.0, 1.0, 0.5);
 
     // Run the application
     app.run();
     Ok(())
 }
-```
 
-### Conway's Game of Life Example
 
-```rust
-use haggis::{simulation::BaseSimulation, CutPlane2D};
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut app = haggis::default();
-
-    // Create a simulation with 2D visualization
-    let mut base_sim = BaseSimulation::new("Conway's Game of Life");
-    let mut cut_plane = CutPlane2D::new();
-
-    // Generate Conway's Game of Life data
-    let game_data = generate_conway_data(128, 128);
-    cut_plane.update_data(game_data, 128, 128);
-    cut_plane.set_position([0.0, 2.0, 0.0].into());
-
-    base_sim.add_visualization("game_plane", cut_plane);
-    app.attach_simulation(base_sim);
-
-    app.run();
-    Ok(())
-}
 ```
 
 ## 📚 Examples
@@ -193,6 +171,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🚧 Roadmap
 
+- [ ] Fix shadow map to cover all working area and optimise for caching
 - [ ] Additional file format support (glTF, FBX)
 - [ ] Advanced particle systems
 - [ ] Networking for distributed simulations

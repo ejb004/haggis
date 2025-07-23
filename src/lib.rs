@@ -42,6 +42,7 @@
 //!
 //! - [`app`] - Main application lifecycle and event handling
 //! - [`gfx`] - Graphics rendering, camera system, and scene management
+//! - [`prelude`] - Common imports and types for convenient usage
 //! - [`simulation`] - CPU and GPU simulation framework
 //! - [`ui`] - User interface system using Dear ImGui
 //! - [`visualization`] - Modular visualization system for 3D data
@@ -49,6 +50,7 @@
 
 pub mod app;
 pub mod gfx;
+pub mod prelude;
 pub mod simulation;
 pub mod ui;
 pub mod visualization;

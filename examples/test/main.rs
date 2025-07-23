@@ -35,9 +35,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_name("_ground")
         .with_transform([0.0, 0.0, 0.0], 1.0, 0.0);
 
-    // Add cut plane visualization
-    let cut_plane = CutPlane2D::new();
-    haggis.add_visualization("cut_plane", cut_plane);
+    // // Add cut plane visualization
+    // let cut_plane = CutPlane2D::new();
+    // haggis.add_visualization("cut_plane", cut_plane);
 
     haggis.set_ui(|ui, scene, selected_index| {
         default_transform_panel(ui, scene, selected_index);

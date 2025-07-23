@@ -51,7 +51,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     for (var i = 0; i < 9; i++) {
         let sample_uv = in.uv + offsets[i] * texel_size;
         let sample_color = textureSample(input_texture, input_sampler, sample_uv);
-        // result += sample_color * weights[i];
+        result += sample_color * weights[i];
     }
     
     return result;

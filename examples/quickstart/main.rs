@@ -22,11 +22,7 @@
 //!
 //! This example demonstrates the essential patterns you'll use in more complex simulations.
 
-use cgmath::Vector3;
-use haggis::gfx::scene::Scene;
-use haggis::simulation::traits::Simulation;
-use haggis::ui::default_transform_panel;
-use imgui::Ui;
+use haggis::prelude::*;
 
 /// A simple particle with basic properties
 /// This represents one object in our simulation
@@ -35,6 +31,7 @@ struct SimpleParticle {
     position: Vector3<f32>, // Where the particle is in 3D space
     velocity: Vector3<f32>, // How fast and in what direction it's moving
     active: bool,           // Whether this particle should be simulated
+    height: f32,           // Height of the object for collision detection
 }
 
 /// Our basic particle simulation
@@ -43,7 +40,7 @@ struct QuickstartSimulation {
     particles: Vec<SimpleParticle>, // All our particles
     gravity: f32,                   // How strong gravity is (negative = down)
     bounce_damping: f32,            // How much energy is lost when bouncing
-    ground_level: f32,              // Y position of the ground
+    ground_level: f32,              // Z position of the ground
     time: f32,                      // How long the simulation has been running
     running: bool,                  // Whether the simulation is active
 }
@@ -55,7 +52,7 @@ impl QuickstartSimulation {
             particles: Vec::new(),
             gravity: -9.8,       // Earth-like gravity
             bounce_damping: 0.8, // Lose 20% energy on bounce
-            ground_level: 0.0,   // Ground at Y=0
+            ground_level: 0.0,   // Ground at Z=0
             time: 0.0,
             running: true,
         }
@@ -63,14 +60,20 @@ impl QuickstartSimulation {
 
     /// Add a new particle at the given position with some initial velocity
     fn add_particle(&mut self, position: Vector3<f32>, velocity: Vector3<f32>) {
+        self.add_particle_with_height(position, velocity, 0.4); // Default height for cubes
+    }
+
+    /// Add a new particle with specified height for collision detection
+    fn add_particle_with_height(&mut self, position: Vector3<f32>, velocity: Vector3<f32>, height: f32) {
         self.particles.push(SimpleParticle {
             position,
             velocity,
             active: true,
+            height,
         });
         println!(
-            "Added particle at {:?} with velocity {:?}",
-            position, velocity
+            "Added particle at {:?} with velocity {:?} and height {:.2}",
+            position, velocity, height
         );
     }
 
@@ -82,23 +85,25 @@ impl QuickstartSimulation {
                 continue; // Skip inactive particles
             }
 
-            // STEP 1: Apply gravity to velocity
+            // STEP 1: Apply gravity to velocity (Z-up coordinate system)
             // Gravity affects velocity, not position directly
-            particle.velocity.y += self.gravity * delta_time;
+            particle.velocity.z += self.gravity * delta_time;
 
             // STEP 2: Apply velocity to position
             // This moves the particle based on its current velocity
             particle.position += particle.velocity * delta_time;
 
-            // STEP 3: Handle ground collision
-            // If particle hits the ground, make it bounce
-            if particle.position.y <= self.ground_level {
-                particle.position.y = self.ground_level; // Put it exactly on ground
-                particle.velocity.y = -particle.velocity.y * self.bounce_damping; // Reverse and dampen
+            // STEP 3: Handle ground collision (Z-up coordinate system)
+            // Check collision using bottom face of object (position - height/2)
+            let bottom_z = particle.position.z - particle.height / 2.0;
+            if bottom_z <= self.ground_level {
+                // Position the object so its bottom face is exactly on ground
+                particle.position.z = self.ground_level + particle.height / 2.0;
+                particle.velocity.z = -particle.velocity.z * self.bounce_damping; // Reverse and dampen
 
                 // Also slow down horizontal movement a bit (friction)
                 particle.velocity.x *= 0.9;
-                particle.velocity.z *= 0.9;
+                particle.velocity.y *= 0.9;
             }
 
             // STEP 4: Simple boundary constraints
@@ -108,9 +113,9 @@ impl QuickstartSimulation {
                 particle.position.x = boundary * particle.position.x.signum();
                 particle.velocity.x = -particle.velocity.x * self.bounce_damping;
             }
-            if particle.position.z.abs() > boundary {
-                particle.position.z = boundary * particle.position.z.signum();
-                particle.velocity.z = -particle.velocity.z * self.bounce_damping;
+            if particle.position.y.abs() > boundary {
+                particle.position.y = boundary * particle.position.y.signum();
+                particle.velocity.y = -particle.velocity.y * self.bounce_damping;
             }
         }
     }
@@ -136,7 +141,7 @@ impl QuickstartSimulation {
                     ];
 
                     // Add a little rotation for visual flair
-                    object.ui_transform.rotation[1] = self.time * 45.0; // Rotate around Y axis
+                    object.ui_transform.rotation[2] = self.time * 45.0; // Rotate around Z axis
 
                     // Apply the transform and make sure it's visible
                     object.apply_ui_transform();
@@ -165,10 +170,10 @@ impl QuickstartSimulation {
         self.time = 0.0;
         self.particles.clear();
 
-        // Add some particles in interesting starting positions
-        self.add_particle(Vector3::new(-2.0, 8.0, 0.0), Vector3::new(2.0, 1.0, 0.0));
-        self.add_particle(Vector3::new(0.0, 10.0, 0.0), Vector3::new(0.0, 0.0, 1.5));
-        self.add_particle(Vector3::new(2.0, 6.0, -1.0), Vector3::new(-1.0, 2.0, 0.5));
+        // Add some particles in interesting starting positions (Z-up coordinate system)
+        self.add_particle(Vector3::new(-2.0, 0.0, 8.0), Vector3::new(2.0, 1.0, 0.0));
+        self.add_particle(Vector3::new(0.0, 0.0, 10.0), Vector3::new(0.0, 1.5, 0.0));
+        self.add_particle(Vector3::new(2.0, -1.0, 6.0), Vector3::new(-1.0, 0.5, 2.0));
     }
 }
 
@@ -409,14 +414,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 fn example_adding_more_particles(simulation: &mut QuickstartSimulation) {
     // You can add particles anywhere in 3D space
     simulation.add_particle(
-        Vector3::new(0.0, 5.0, 0.0), // Position: 5 units up
+        Vector3::new(0.0, 0.0, 5.0), // Position: 5 units up
         Vector3::new(1.0, 0.0, 0.0), // Velocity: moving right
     );
 
     // Particles can start with any velocity
     simulation.add_particle(
-        Vector3::new(-3.0, 8.0, 2.0),  // Position: up and to the left
-        Vector3::new(0.5, -1.0, -0.5), // Velocity: moving down and diagonal
+        Vector3::new(-3.0, 2.0, 8.0),  // Position: up and to the left
+        Vector3::new(0.5, -0.5, -1.0), // Velocity: moving down and diagonal
     );
 }
 
