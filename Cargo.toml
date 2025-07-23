@@ -1,6 +1,6 @@
 [package]
 name = "haggis"
-version = "0.1.3"
+version = "0.1.4"
 edition = "2021"
 authors = ["Ethan Beddard"]
 description = "A 3D rendering and simulation engine built in Rust using wgpu for graphics rendering and winit for windowing, supporting both CPU and GPU-based simulations with real-time visualization"
