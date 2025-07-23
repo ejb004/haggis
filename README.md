@@ -72,6 +72,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ![Conways Game of Life Rendering](assets/test.png)
 
+## 📸 Camera Controls
+
+- **`Zoom`** - Mouse or trackpad scroll
+- **`Orbit`** - Click and drag
+- **`Pan`** - Shift + Click and drag
+
 ## 🏗️ Architecture
 
 ### Core Components
