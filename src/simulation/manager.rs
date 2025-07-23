@@ -243,19 +243,6 @@ impl SimulationManager {
         self.simulation.is_some()
     }
 
-    /// Update visualization material textures for BaseSimulation instances
-    ///
-    /// This method attempts to update material textures for simulations that support visualizations.
-    fn update_simulation_visualization_textures(
-        &mut self,
-        _simulation: &mut Box<dyn Simulation>,
-        _scene: &mut Scene,
-        _device: &Device,
-        _queue: &Queue,
-    ) {
-        // For BaseSimulation instances, we'll add a separate update after apply_gpu_results_to_scene
-        // This is handled in a separate call below in the main update loop
-    }
 
     /// Get visualization planes from the current simulation
     pub fn get_visualization_planes(&self) -> Vec<crate::gfx::rendering::VisualizationPlane> {

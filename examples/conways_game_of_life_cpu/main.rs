@@ -34,7 +34,9 @@ pub struct GameOfLifeState {
     height: u32,
     current_grid: Vec<bool>,
     next_grid: Vec<bool>,
+    #[allow(dead_code)]
     running: bool,
+    #[allow(dead_code)]
     last_update: Instant,
     generation: u64,
 }

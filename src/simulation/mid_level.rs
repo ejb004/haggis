@@ -185,6 +185,7 @@ impl<T: Simulation> ManagedSimulation<T> {
 
 // Unfortunately, we can't implement as_any_mut for the base Simulation trait
 // without modifying it, so we'll create a helper trait for that
+#[allow(dead_code)]
 trait SimulationAny {
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any;
 }
@@ -393,6 +394,7 @@ impl GpuResourceManager {
 /// Batch processor for efficient simulation updates
 pub struct BatchProcessor {
     batch_size: usize,
+    #[allow(dead_code)]
     current_batch: Vec<usize>,
     total_items: usize,
 }

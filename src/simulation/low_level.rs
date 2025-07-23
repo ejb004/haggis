@@ -37,6 +37,7 @@ pub struct ComputeContext {
     device: Arc<Device>,
     queue: Arc<Queue>,
     command_encoder: Option<CommandEncoder>,
+    #[allow(dead_code)]
     active_pass: Option<wgpu::ComputePass<'static>>,
     pipelines: HashMap<String, Arc<ComputePipeline>>,
     buffers: HashMap<String, Arc<Buffer>>,
@@ -741,6 +742,7 @@ impl BufferPool {
 }
 
 /// Performance monitoring for low-level operations
+#[allow(dead_code)]
 pub struct GpuProfiler {
     device: Arc<Device>,
     query_set: Option<wgpu::QuerySet>,

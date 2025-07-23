@@ -44,8 +44,10 @@ pub struct ParticleSystem {
     forces: Vec<ForceField>,
     constraints: Vec<Constraint>,
     settings: ParticleSettings,
+    #[allow(dead_code)]
     use_gpu: bool,
     needs_gpu_update: bool,
+    #[allow(dead_code)]
     gpu_resources: Option<GpuParticleResources>,
 }
 
@@ -118,6 +120,7 @@ pub struct ParticleSettings {
 }
 
 /// GPU resources for particle simulation
+#[allow(dead_code)]
 struct GpuParticleResources {
     // This will be populated when we implement GPU support
     particle_buffer: Option<wgpu::Buffer>,

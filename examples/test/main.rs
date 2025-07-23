@@ -1,4 +1,3 @@
-use haggis::simulation::examples::cpu::SimplyMove;
 use haggis::ui::default_transform_panel;
 use haggis::visualization::CutPlane2D;
 

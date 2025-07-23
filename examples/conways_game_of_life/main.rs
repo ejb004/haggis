@@ -24,7 +24,7 @@
 use cgmath::Vector3;
 use haggis::{
     simulation::BaseSimulation, 
-    visualization::{traits::VisualizationComponent, cut_plane_2d::BufferElementType, ui::cut_plane_controls::FilterMode}, 
+    visualization::{traits::VisualizationComponent, ui::cut_plane_controls::FilterMode}, 
     CutPlane2D,
 };
 use std::{time::Instant, sync::Arc};
@@ -59,6 +59,7 @@ impl LifePattern {
 /// GPU resources for Conway's Game of Life compute shader
 struct GpuGameOfLifeResources {
     compute_pipeline: wgpu::ComputePipeline,
+    #[allow(dead_code)]
     bind_group_layout: wgpu::BindGroupLayout,
     // Ping-pong buffers
     buffer_a: wgpu::Buffer, // Current state
@@ -514,6 +515,7 @@ impl ConwaysGpuSimulation {
     }
 
     /// Fallback: Update visualization with CPU data (legacy approach for compatibility)
+    #[allow(dead_code)]
     fn update_visualization_with_data(&mut self, data: Vec<f32>, device: &Device, queue: &Queue) {
         let live_count = data.iter().filter(|&&val| val > 0.0).count();
 
