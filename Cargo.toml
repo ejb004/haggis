@@ -2,8 +2,16 @@
 name = "haggis"
 version = "0.1.0"
 edition = "2021"
-description = "A general-purpose GPU compute and render engine for simulation visualizations"
+authors = ["Ethan Beddard"]
+description = "A 3D rendering and simulation engine built in Rust using wgpu for graphics rendering and winit for windowing, supporting both CPU and GPU-based simulations with real-time visualization"
 license = "MIT"
+repository = "https://github.com/ejb004/haggis"
+homepage = "https://github.com/ejb004/haggis"
+documentation = "https://docs.rs/haggis"
+readme = "README.md"
+keywords = ["graphics", "simulation", "wgpu", "3d", "rendering"]
+categories = ["graphics", "simulation", "game-development", "visualization"]
+exclude = ["examples/*/assets/*", ".github/*", "*.png", "*.jpg"]
 
 [lib]
 path = "src/lib.rs"
