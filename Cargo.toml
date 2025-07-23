@@ -11,7 +11,7 @@ documentation = "https://docs.rs/haggis"
 readme = "README.md"
 keywords = ["graphics", "simulation", "wgpu", "3d", "rendering"]
 categories = ["graphics", "simulation", "game-development", "visualization"]
-exclude = ["examples/*/assets/*", ".github/*", "*.png", "*.jpg"]
+exclude = ["examples/*/assets/*", ".github/*", "*.png", "*.jpg", "assets/*"]
 
 [lib]
 path = "src/lib.rs"
