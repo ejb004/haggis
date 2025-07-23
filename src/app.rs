@@ -60,6 +60,7 @@ use crate::{
             camera_controller::CameraController, camera_utils::CameraManager,
             orbit_camera::OrbitCamera,
         },
+        picking::ObjectPicker,
         rendering::render_engine::RenderEngine,
         scene::{object::ObjectBuilder, scene::Scene},
     },
@@ -181,6 +182,12 @@ pub struct AppState {
     pub performance_monitor: PerformanceMonitor,
     /// Whether to show the performance metrics panel
     pub show_performance_panel: bool,
+    /// Object picker for mouse selection
+    pub object_picker: ObjectPicker,
+    /// Current mouse position for picking
+    mouse_position: (f32, f32),
+    /// Whether UI captured input in the last frame
+    ui_wants_input: bool,
 }
 
 impl HaggisApp {
@@ -230,6 +237,9 @@ impl HaggisApp {
                 visualization_manager: VisualizationManager::new(),
                 performance_monitor: PerformanceMonitor::new(),
                 show_performance_panel: false, // Hidden by default
+                object_picker: ObjectPicker::new(),
+                mouse_position: (0.0, 0.0),
+                ui_wants_input: false,
             },
         }
     }
@@ -990,6 +1000,18 @@ impl ApplicationHandler for AppState {
                     ui_manager.update_display_size(actual_width, actual_height);
                 }
             }
+            WindowEvent::CursorMoved { position, .. } => {
+                // Track mouse position for picking
+                self.mouse_position = (position.x as f32, position.y as f32);
+            }
+            WindowEvent::MouseInput { 
+                button: winit::event::MouseButton::Left,
+                state: winit::event::ElementState::Pressed,
+                ..
+            } => {
+                // Handle left mouse click for object picking
+                self.handle_mouse_click();
+            }
             WindowEvent::CloseRequested => {
                 event_loop.exit();
             }
@@ -1052,13 +1074,16 @@ impl ApplicationHandler for AppState {
                         ui_callback(ui, &mut self.scene, &mut self.selected_object_index);
                     });
 
+                    // Store UI input state for object picking
+                    self.ui_wants_input = ui_wants_input;
+
                     // Camera controls are disabled when UI has focus
                     if !ui_wants_input {
                         // Camera input processing would happen here
                     }
                 } else if let Some(ui_manager) = self.ui_manager.as_mut() {
                     // If no user UI callback, still render default UI, simulation UI and visualizations
-                    let _ui_wants_input = ui_manager.update_logic(window, |ui| {
+                    let ui_wants_input = ui_manager.update_logic(window, |ui| {
                         // Render default object transformation UI (left side) if enabled
                         if self.show_transform_panel {
                             default_transform_panel(
@@ -1076,6 +1101,9 @@ impl ApplicationHandler for AppState {
                             self.performance_monitor.render_ui(ui);
                         }
                     });
+
+                    // Store UI input state for object picking
+                    self.ui_wants_input = ui_wants_input;
                 }
 
                 // Apply UI transform changes to GPU buffers (only if no simulation is controlling objects)
@@ -1124,6 +1152,7 @@ impl ApplicationHandler for AppState {
             _ => (),
         }
     }
+
     /// Handles device-level input events such as mouse movement and raw input.
     ///
     /// This method processes camera controls when the UI is not capturing input,
@@ -1166,6 +1195,53 @@ impl ApplicationHandler for AppState {
     fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
         if let Some(ref window) = self.window {
             window.request_redraw();
+        }
+    }
+}
+
+impl AppState {
+    /// Handle mouse click for object picking
+    fn handle_mouse_click(&mut self) {
+        // Only pick objects if UI is not capturing input and we have a render engine
+        let Some(render_engine) = self.render_engine.as_ref() else {
+            return;
+        };
+
+        // Check if UI wants input (to avoid picking while interacting with UI)
+        if self.ui_wants_input {
+            return; // UI is capturing input, don't pick objects
+        }
+
+        // Get screen size
+        let (screen_width, screen_height) = render_engine.get_surface_size();
+        let screen_size = (screen_width as f32, screen_height as f32);
+
+        // Get camera
+        let camera = &self.scene.camera_manager.camera;
+
+        // Perform object picking
+        if let Some(pick_result) = self.object_picker.pick_object(
+            self.mouse_position,
+            screen_size,
+            camera,
+            &self.scene,
+        ) {
+            println!(
+                "Picked object {} at distance {:.2}",
+                pick_result.object_index, pick_result.distance
+            );
+
+            // Update selected object index
+            self.selected_object_index = Some(pick_result.object_index);
+
+            // Print object info for debugging
+            if let Some(object) = self.scene.objects.get(pick_result.object_index) {
+                println!("Selected object: '{}'", object.name);
+            }
+        } else {
+            println!("No object picked");
+            // Optionally deselect when clicking empty space
+            // self.selected_object_index = None;
         }
     }
 }

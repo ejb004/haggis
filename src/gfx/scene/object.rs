@@ -16,6 +16,11 @@ pub struct Mesh {
 }
 
 impl Mesh {
+    /// Get the vertices for this mesh
+    pub fn vertices(&self) -> &[Vertex3D] {
+        &self.vertices
+    }
+
     pub fn new(positions: Vec<f32>, normals: Vec<f32>, indices: Vec<u32>) -> Self {
         let index_count = indices.len() as u32;
 

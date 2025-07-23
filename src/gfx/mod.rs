@@ -38,6 +38,7 @@
 
 pub mod camera;
 pub mod geometry;
+pub mod picking;
 pub mod rendering;
 pub mod resources;
 pub mod scene;
