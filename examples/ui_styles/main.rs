@@ -23,12 +23,12 @@ fn main() {
     // app.set_ui_style(UiStyle::Matrix);
 
     // Try different font options:
-    // app.set_ui_font(UiFont::Default);
+    app.set_ui_font(UiFont::Default);
     // app.set_ui_font(UiFont::Monospace); // Monospace fallback
-    app.set_ui_font(UiFont::Custom {
-        data: include_bytes!("fonts/inter.ttf"), // Add your own font file
-        size: 32.0,
-    });
+    // app.set_ui_font(UiFont::Custom {
+    //     data: include_bytes!("fonts/inter.ttf"), // Add your own font file
+    //     size: 32.0,
+    // });
 
     // app.set_ui_style(UiStyle::Custom {
     //     background: [0.2, 0.3, 0.4, 1.0],     // Window background
