@@ -26,7 +26,7 @@ Add haggis to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-haggis = "0.1.4"
+haggis = "0.1.5"
 ```
 
 ### Basic Example

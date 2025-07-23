@@ -1,6 +1,6 @@
 [package]
 name = "haggis"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2021"
 authors = ["Ethan Beddard"]
 description = "A 3D rendering and simulation engine built in Rust using wgpu for graphics rendering and winit for windowing, supporting both CPU and GPU-based simulations with real-time visualization"
@@ -12,14 +12,45 @@ readme = "README.md"
 keywords = ["graphics", "simulation", "wgpu", "3d", "rendering"]
 categories = ["graphics", "simulation", "game-development", "visualization"]
 exclude = [
+  # Asset files (images, gifs, etc.) - not needed for the library
   "assets/*",
-  ".github/*",
-  "examples/test/*",
-  "examples/ui_styles/fonts/*.ttf",
   "*.png",
   "*.jpg",
+  "*.jpeg",
   "*.gif",
+  "*.mp4",
+  "*.mkv",
+  "*.mov",
+
+  # 3D model files - examples work with procedural geometry now
+  "examples/test/*.obj",
+  "examples/test/*.mtl",
+  "*.obj",
+  "*.mtl",
+
+  # Font files - not essential for core library functionality
+  "examples/ui_styles/fonts/*.ttf",
+  "src/ui/fonts/*.ttf",
+  "*.ttf",
+
+  # Development and documentation files
+  ".github/*",
+  "CLAUDE.md",
+  "haggis_file_layout.md",
+  "UPDATED_CUT_PLANE_API.md",
+  "VISUALIZATION_SYSTEM.md",
+  "examples/GETTING_STARTED.md",
+
+  # Backup files
+  "src/app 2.rs",
+  "*backup*",
+  "*.bak",
+  "*.orig",
+  "*.old",
+
+  # Build artifacts
   "target/*",
+  "Cargo.lock",
 ]
 
 [lib]

@@ -32,7 +32,12 @@
       "Bash(git add:*)",
       "Bash(./test_debug_panel)",
       "Bash(git checkout:*)",
-      "Bash(RUST_LOG=debug cargo check)"
+      "Bash(RUST_LOG=debug cargo check)",
+      "Bash(find . -name \"*.obj\" -o -name \"*.ttf\" -o -name \"*.png\" -o -name \"*.gif\" -o -name \"*.jpg\" -o -name \"*.jpeg\" -o -name \"*.mp4\" -o -name \"*.mkv\" -o -name \"*.mov\")",
+      "Bash(find . -name \"*.md\")",
+      "Bash(find . -name \"*backup*\" -o -name \"*2.rs\" -o -name \"*.bak\" -o -name \"*.orig\" -o -name \"*.old\")",
+      "Bash(ls -la \"/Users/ethanbeddard/Documents/DigitalProjects/haggis/src/app 2.rs\")",
+      "Bash(ls -la \"src/app 2.rs\")"
     ],
     "deny": []
   }
