@@ -38,6 +38,7 @@
 
 pub mod camera;
 pub mod geometry;
+pub mod gizmos;
 pub mod picking;
 pub mod rendering;
 pub mod resources;
@@ -45,4 +46,5 @@ pub mod scene;
 
 // Re-export commonly used types
 pub use camera::orbit_camera::OrbitCamera;
+pub use gizmos::{CameraGizmo, Gizmo, GizmoManager, ViewportGizmo, ViewDirection};
 pub use rendering::render_engine::RenderEngine;

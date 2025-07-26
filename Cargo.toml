@@ -41,6 +41,9 @@ exclude = [
   "VISUALIZATION_SYSTEM.md",
   "examples/GETTING_STARTED.md",
 
+  # Examples - exclude from published package
+  "examples/*",
+
   # Backup files
   "src/app 2.rs",
   "*backup*",
@@ -86,58 +89,61 @@ optional = false
 version = "0.3"
 optional = false
 
-# Quickstart example - Perfect first example for beginners
-[[example]]
-name = "quickstart"
-path = "examples/quickstart/main.rs"
+# Examples excluded from published package (see exclude section above)
+# Users can find examples in the GitHub repository
 
-# Three-body problem - Advanced celestial mechanics simulation
-[[example]]
-name = "three_body"
-path = "examples/three_body/main.rs"
+# # Quickstart example - Perfect first example for beginners
+# [[example]]
+# name = "quickstart"
+# path = "examples/quickstart/main.rs"
 
-# High-level API examples - CPU vs GPU comparison
-[[example]]
-name = "simple_particles_cpu"
-path = "examples/simulation_usage/high_level/cpu/simple_particles.rs"
+# # Three-body problem - Advanced celestial mechanics simulation
+# [[example]]
+# name = "three_body"
+# path = "examples/three_body/main.rs"
 
-[[example]]
-name = "simple_particles_gpu"
-path = "examples/simulation_usage/high_level/gpu/simple_particles.rs"
+# # High-level API examples - CPU vs GPU comparison
+# [[example]]
+# name = "simple_particles_cpu"
+# path = "examples/simulation_usage/high_level/cpu/simple_particles.rs"
 
-# Low-level API examples - Advanced CPU vs GPU optimization
-[[example]]
-name = "performance_comparison_cpu"
-path = "examples/simulation_usage/low_level/cpu/performance_comparison.rs"
+# [[example]]
+# name = "simple_particles_gpu"
+# path = "examples/simulation_usage/high_level/gpu/simple_particles.rs"
 
-[[example]]
-name = "performance_comparison_gpu"
-path = "examples/simulation_usage/low_level/gpu/performance_comparison.rs"
+# # Low-level API examples - Advanced CPU vs GPU optimization
+# [[example]]
+# name = "performance_comparison_cpu"
+# path = "examples/simulation_usage/low_level/cpu/performance_comparison.rs"
 
-# Additional low-level GPU examples
-[[example]]
-name = "custom_compute_shader"
-path = "examples/simulation_usage/low_level/gpu/custom_compute_shader.rs"
+# [[example]]
+# name = "performance_comparison_gpu"
+# path = "examples/simulation_usage/low_level/gpu/performance_comparison.rs"
 
-[[example]]
-name = "manual_buffer_management"
-path = "examples/simulation_usage/low_level/gpu/manual_buffer_management.rs"
+# # Additional low-level GPU examples
+# [[example]]
+# name = "custom_compute_shader"
+# path = "examples/simulation_usage/low_level/gpu/custom_compute_shader.rs"
 
-[[example]]
-name = "advanced_rendering"
-path = "examples/simulation_usage/low_level/gpu/advanced_rendering.rs"
+# [[example]]
+# name = "manual_buffer_management"
+# path = "examples/simulation_usage/low_level/gpu/manual_buffer_management.rs"
 
-# Conway's Game of Life - 2D visualization example
-[[example]]
-name = "conways_game_of_life"
-path = "examples/conways_game_of_life/main.rs"
+# [[example]]
+# name = "advanced_rendering"
+# path = "examples/simulation_usage/low_level/gpu/advanced_rendering.rs"
 
-# Conway's Game of Life - Simple CPU implementation
-[[example]]
-name = "conways_game_of_life_cpu"
-path = "examples/conways_game_of_life_cpu/main.rs"
+# # Conway's Game of Life - 2D visualization example
+# [[example]]
+# name = "conways_game_of_life"
+# path = "examples/conways_game_of_life/main.rs"
 
-# Shadow Cache Demo - Performance optimization demonstration
-[[example]]
-name = "shadow_cache_demo"
-path = "examples/shadow_cache_demo.rs"
+# # Conway's Game of Life - Simple CPU implementation
+# [[example]]
+# name = "conways_game_of_life_cpu"
+# path = "examples/conways_game_of_life_cpu/main.rs"
+
+# # Shadow Cache Demo - Performance optimization demonstration
+# [[example]]
+# name = "shadow_cache_demo"
+# path = "examples/shadow_cache_demo.rs"

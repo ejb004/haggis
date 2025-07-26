@@ -37,7 +37,8 @@
       "Bash(find . -name \"*.md\")",
       "Bash(find . -name \"*backup*\" -o -name \"*2.rs\" -o -name \"*.bak\" -o -name \"*.orig\" -o -name \"*.old\")",
       "Bash(ls -la \"/Users/ethanbeddard/Documents/DigitalProjects/haggis/src/app 2.rs\")",
-      "Bash(ls -la \"src/app 2.rs\")"
+      "Bash(ls -la \"src/app 2.rs\")",
+      "Bash(cargo clean:*)"
     ],
     "deny": []
   }

@@ -278,6 +278,8 @@ impl Simulation for QuickstartSimulation {
                 ui.text("• Mouse: Look around");
                 ui.text("• Scroll: Zoom in/out");
                 ui.text("• Shift+Mouse: Pan view");
+                ui.text("• Red cube shows camera position!");
+                ui.text("• Corner cube = viewport navigation!");
                 ui.spacing();
 
                 ui.text("⚡ Next Steps:");
@@ -384,6 +386,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     haggis.attach_simulation(simulation);
     println!("✅ Created and attached particle simulation");
 
+    // STEP 4.5: Add camera gizmo to visualize camera position
+    // This shows where the camera is in 3D space with a toggleable red cube
+    let camera_gizmo = haggis::gfx::gizmos::CameraGizmo::new();
+    haggis.add_gizmo("camera", camera_gizmo);
+    println!("✅ Added camera position gizmo (toggleable in UI)");
+
+    // STEP 4.6: Add viewport navigation gizmo (like Fusion 360)
+    // This shows a small cube in the corner for quick view switching
+    let viewport_gizmo = haggis::gfx::gizmos::ViewportGizmo::new();
+    haggis.add_gizmo("viewport", viewport_gizmo);
+    println!("✅ Added viewport navigation gizmo (corner cube for view switching)");
+
+
     // STEP 5: Set up the user interface and enable performance monitoring
     // This defines what controls and panels are shown
     haggis.show_performance_panel(true); // Enable performance metrics
@@ -399,7 +414,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("🚀 Starting application...");
     println!("   💡 Look for the bouncing cubes!");
     println!("   🎮 Use mouse to look around, scroll to zoom");
+    println!("   📍 Red cube shows your camera position");
+    println!("   🎯 Corner gizmo = Fusion 360-style view switching!");
     println!("   ⚙️  Adjust physics in the control panel");
+    println!("   🎛️  Use Gizmo Manager to toggle displays");
     println!("   ❌ Close the window to exit");
     println!();
 

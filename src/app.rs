@@ -178,6 +178,8 @@ pub struct AppState {
     pub simulation_manager: SimulationManager,
     /// Visualization management system
     pub visualization_manager: VisualizationManager,
+    /// Gizmo management system
+    pub gizmo_manager: crate::gfx::gizmos::GizmoManager,
     /// Performance monitoring system
     pub performance_monitor: PerformanceMonitor,
     /// Whether to show the performance metrics panel
@@ -237,6 +239,7 @@ impl HaggisApp {
                 selected_object_index: Some(0),
                 simulation_manager: SimulationManager::new(),
                 visualization_manager: VisualizationManager::new(),
+                gizmo_manager: crate::gfx::gizmos::GizmoManager::new(),
                 performance_monitor: PerformanceMonitor::new(),
                 show_performance_panel: false, // Hidden by default
                 enable_vsync: true, // Enabled for smoother visuals by default
@@ -361,6 +364,78 @@ impl HaggisApp {
     /// * `enabled` - `true` to enable visualizations, `false` to disable them
     pub fn set_visualization_enabled(&mut self, enabled: bool) {
         self.app_state.visualization_manager.set_enabled(enabled);
+    }
+
+    /// Add a gizmo to the engine.
+    ///
+    /// Gizmos are visual aids that help with debugging, visualization, and interaction
+    /// in 3D space. They can represent positions, orientations, paths, bounds, and more.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Unique identifier for the gizmo
+    /// * `gizmo` - The gizmo instance to add
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use haggis::{HaggisApp, gfx::gizmos::CameraGizmo};
+    ///
+    /// let mut app = haggis::default();
+    /// let camera_gizmo = CameraGizmo::new();
+    /// app.add_gizmo("camera", camera_gizmo);
+    /// ```
+    pub fn add_gizmo<T: crate::gfx::gizmos::Gizmo + 'static>(
+        &mut self,
+        name: &str,
+        gizmo: T,
+    ) {
+        if let (Some(render_engine), _) = (&self.app_state.render_engine, &self.app_state.window) {
+            self.app_state.gizmo_manager.add_gizmo(
+                name.to_string(),
+                Box::new(gizmo),
+                &mut self.app_state.scene,
+                Some(render_engine.device()),
+                Some(render_engine.queue()),
+            );
+        } else {
+            // If render engine isn't initialized yet, we'll need to defer this
+            // For now, just add without GPU resources
+            self.app_state.gizmo_manager.add_gizmo(
+                name.to_string(),
+                Box::new(gizmo),
+                &mut self.app_state.scene,
+                None,
+                None,
+            );
+        }
+    }
+
+    /// Remove a gizmo from the engine.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Name of the gizmo to remove
+    pub fn remove_gizmo(&mut self, name: &str) {
+        self.app_state.gizmo_manager.remove_gizmo(name, &mut self.app_state.scene);
+    }
+
+    /// Check if the gizmo system is enabled.
+    ///
+    /// # Returns
+    ///
+    /// `true` if gizmos are enabled, `false` otherwise.
+    pub fn is_gizmo_enabled(&self) -> bool {
+        self.app_state.gizmo_manager.is_enabled()
+    }
+
+    /// Set the enabled state of the gizmo system.
+    ///
+    /// # Arguments
+    ///
+    /// * `enabled` - `true` to enable gizmos, `false` to disable them
+    pub fn set_gizmo_enabled(&mut self, enabled: bool) {
+        self.app_state.gizmo_manager.set_enabled(enabled);
     }
 
     /// Sets the UI style theme for the application.
@@ -1053,6 +1128,14 @@ impl ApplicationHandler for AppState {
                     Some(render_engine.queue()),
                 );
 
+                // Update gizmos
+                self.gizmo_manager.update(
+                    delta_time,
+                    &mut self.scene,
+                    Some(render_engine.device()),
+                    Some(render_engine.queue()),
+                );
+
                 // Initialize GPU resources for any new scene objects (but not visualizations)
                 self.scene
                     .init_gpu_resources(render_engine.device(), render_engine.queue());
@@ -1078,6 +1161,9 @@ impl ApplicationHandler for AppState {
 
                         // Render visualization UI (right side)
                         self.visualization_manager.render_ui(ui);
+
+                        // Render gizmo UI
+                        self.gizmo_manager.render_ui(ui, &mut self.scene);
 
                         // Render performance metrics if enabled
                         if self.show_performance_panel {
@@ -1109,6 +1195,7 @@ impl ApplicationHandler for AppState {
 
                         self.simulation_manager.render_ui(ui, &mut self.scene);
                         self.visualization_manager.render_ui(ui);
+                        self.gizmo_manager.render_ui(ui, &mut self.scene);
 
                         // Render performance metrics if enabled
                         if self.show_performance_panel {
