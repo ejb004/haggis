@@ -18,6 +18,7 @@ use crate::gfx::{
 use super::pipeline_manager::{PipelineConfig, PipelineManager};
 use super::shadow_cache::ShadowCache;
 use super::visualization_renderer::{VisualizationPlane, VisualizationRenderer};
+use super::instanced_grid::InstancedGrid;
 
 /// Core rendering engine managing GPU resources and draw calls
 ///
@@ -55,6 +56,9 @@ pub struct RenderEngine {
 
     // Visualization rendering system
     visualization_renderer: VisualizationRenderer,
+
+    // Instanced grid rendering system
+    instanced_grid: Option<InstancedGrid>,
 }
 
 impl RenderEngine {
@@ -394,6 +398,7 @@ impl RenderEngine {
             light_config,
             shadow_cache: ShadowCache::new(),
             visualization_renderer,
+            instanced_grid: None,
         }
     }
 
@@ -542,6 +547,9 @@ impl RenderEngine {
                     }
                 }
             }
+
+            // Render instanced grid after scene objects (same render pass for proper depth testing)
+            self.render_instanced_grid(&mut render_pass);
         }
 
         // PASS 5: Visualization rendering (separate from scene objects)
@@ -736,5 +744,58 @@ impl RenderEngine {
     /// Returns information about cache state, tracked objects, and shadow bounds.
     pub fn get_shadow_cache_stats(&self) -> super::shadow_cache::ShadowCacheStats {
         self.shadow_cache.get_stats()
+    }
+
+    /// Initialize the instanced grid system
+    ///
+    /// Creates a new instanced grid renderer with the specified maximum instance count.
+    /// This should be called after the render engine is created and before rendering.
+    pub fn initialize_instanced_grid(&mut self, max_instances: u32) {
+        let mut grid = InstancedGrid::new(&self.device, max_instances);
+        grid.initialize_pipeline(&self.device, self.format, &self.global_bindings);
+        self.instanced_grid = Some(grid);
+    }
+
+    /// Get a mutable reference to the instanced grid
+    ///
+    /// Returns None if the instanced grid hasn't been initialized yet.
+    pub fn instanced_grid_mut(&mut self) -> Option<&mut InstancedGrid> {
+        self.instanced_grid.as_mut()
+    }
+
+    /// Get a reference to the instanced grid
+    ///
+    /// Returns None if the instanced grid hasn't been initialized yet.
+    pub fn instanced_grid(&self) -> Option<&InstancedGrid> {
+        self.instanced_grid.as_ref()
+    }
+
+    /// Update the instanced grid with new data (convenience method that handles borrow issues)
+    ///
+    /// This method combines enable/disable and update operations to avoid borrow checker conflicts.
+    /// If the instanced grid hasn't been initialized yet, it will be automatically created.
+    pub fn update_instanced_grid_data(&mut self, instances: &[(cgmath::Vector3<f32>, f32, cgmath::Vector4<f32>)]) {
+        // Lazy initialization: only create instanced grid when first used
+        if self.instanced_grid.is_none() {
+            self.initialize_instanced_grid(8192);
+        }
+
+        if let Some(ref mut grid) = self.instanced_grid {
+            let enabled = !instances.is_empty();
+            grid.set_enabled(enabled);
+            if enabled {
+                grid.update(&self.queue, instances);
+            }
+        }
+    }
+
+    /// Render the instanced grid during the main render pass
+    ///
+    /// This should be called during the main rendering phase after scene objects
+    /// but before UI rendering for proper depth testing.
+    pub fn render_instanced_grid<'a>(&'a self, render_pass: &mut wgpu::RenderPass<'a>) {
+        if let Some(ref grid) = self.instanced_grid {
+            grid.render(render_pass, self.global_bindings.bind_groups());
+        }
     }
 }

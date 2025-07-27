@@ -924,6 +924,45 @@ impl HaggisApp {
 
         ObjectBuilder::new(self, object_index)
     }
+
+    /// Initialize the instanced grid system for high-performance rendering
+    /// 
+    /// This should be called once during app setup if you plan to use instanced grid rendering.
+    /// The instanced grid system allows rendering thousands of identical objects efficiently.
+    ///
+    /// # Arguments
+    /// * `max_instances` - Maximum number of instances that can be rendered simultaneously
+    pub fn initialize_instanced_grid(&mut self, max_instances: u32) {
+        if let Some(ref mut render_engine) = self.app_state.render_engine {
+            render_engine.initialize_instanced_grid(max_instances);
+            println!("🎲 Initialized instanced grid renderer (max {} instances)", max_instances);
+        }
+    }
+
+    /// Update the instanced grid with new instance data
+    ///
+    /// Updates the GPU buffers with new instance data for efficient rendering.
+    /// Each instance is defined by position, scale, and color.
+    ///
+    /// # Arguments
+    /// * `instances` - Vector of (position, scale, color) tuples for each instance
+    pub fn update_instanced_grid(&mut self, instances: &[(cgmath::Vector3<f32>, f32, cgmath::Vector4<f32>)]) {
+        if let Some(ref mut render_engine) = self.app_state.render_engine {
+            render_engine.update_instanced_grid_data(instances);
+        }
+    }
+
+    /// Enable or disable the instanced grid rendering
+    ///
+    /// # Arguments
+    /// * `enabled` - Whether to render the instanced grid
+    pub fn set_instanced_grid_enabled(&mut self, enabled: bool) {
+        if let Some(ref mut render_engine) = self.app_state.render_engine {
+            if let Some(grid) = render_engine.instanced_grid_mut() {
+                grid.set_enabled(enabled);
+            }
+        }
+    }
 }
 
 impl ApplicationHandler for AppState {
@@ -992,7 +1031,7 @@ impl ApplicationHandler for AppState {
             self.render_engine = Some(renderer);
 
             // Initialize GPU resources for current simulation
-            if let Some(render_engine) = &self.render_engine {
+            if let Some(render_engine) = &mut self.render_engine {
                 self.simulation_manager
                     .initialize_gpu(render_engine.device(), render_engine.queue());
 
@@ -1127,6 +1166,29 @@ impl ApplicationHandler for AppState {
                     Some(render_engine.device()),
                     Some(render_engine.queue()),
                 );
+
+                // Update instanced grid based on current simulation
+                if self.simulation_manager.current_simulation_name()
+                    .map(|name| name.contains("Conway"))
+                    .unwrap_or(false) 
+                {
+                    // Conway 3D simulations - get their instanced grid data
+                    if let Some(conway_data) = self.simulation_manager.get_instanced_grid_data() {
+                        render_engine.update_instanced_grid_data(&conway_data);
+                    } else {
+                        // Conway simulation exists but no data yet
+                        render_engine.update_instanced_grid_data(&Vec::new());
+                    }
+                } else {
+                    // Non-Conway simulation - show test cubes at cut plane positions
+                    let test_instances = vec![
+                        (cgmath::Vector3::new(0.0, 0.0, 0.0), 0.2, cgmath::Vector4::new(1.0, 1.0, 0.0, 1.0)), // Yellow test cube at center
+                        (cgmath::Vector3::new(0.5, 0.0, 0.0), 0.1, cgmath::Vector4::new(1.0, 0.0, 0.0, 1.0)), // Red test cube
+                        (cgmath::Vector3::new(0.0, 0.5, 0.0), 0.1, cgmath::Vector4::new(0.0, 1.0, 0.0, 1.0)), // Green test cube
+                        (cgmath::Vector3::new(0.0, 0.0, 0.5), 0.1, cgmath::Vector4::new(0.0, 0.0, 1.0, 1.0)), // Blue test cube
+                    ];
+                    render_engine.update_instanced_grid_data(&test_instances);
+                }
 
                 // Update gizmos
                 self.gizmo_manager.update(

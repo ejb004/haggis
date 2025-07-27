@@ -27,6 +27,16 @@ use haggis::{
     simulation::BaseSimulation,
     visualization::traits::VisualizationComponent,
 };
+use cgmath::{Vector3, Vector4};
+use std::sync::{Arc, Mutex};
+
+// Global state for Conway instanced grid data
+static CONWAY_GRID_DATA: Mutex<Vec<(Vector3<f32>, f32, Vector4<f32>)>> = Mutex::new(Vec::new());
+
+/// Get the current Conway instanced grid data from global state
+pub fn get_conway_instanced_grid_data() -> Vec<(Vector3<f32>, f32, Vector4<f32>)> {
+    CONWAY_GRID_DATA.lock().map(|data| data.clone()).unwrap_or_else(|_| Vec::new())
+}
 
 /// Grid size for the 3D Game of Life (64³ = 262,144 cells)
 const GRID_SIZE: u32 = 64;
@@ -94,6 +104,12 @@ struct Conways3DGpuSimulation {
     // Cut plane controls
     cut_plane_z: f32, // Z position of the cut plane (0.0 to 1.0)
     needs_cut_plane_update: bool, // Flag to update cut plane visualization
+    // 3D cube visualization
+    show_3d_cubes: bool, // Toggle for 3D cube visualization
+    cube_objects_created: bool, // Track if cube objects are in scene
+    instanced_grid_data: Vec<(Vector3<f32>, f32, Vector4<f32>)>, // Instance data for render engine
+    // Shared scale for both cut plane and cubes
+    visualization_scale: f32, // Scale factor for both cut plane and cube visualization
 }
 
 impl Conways3DGpuSimulation {
@@ -103,7 +119,7 @@ impl Conways3DGpuSimulation {
         // Create and configure the cut plane visualization
         let mut cut_plane = CutPlane2D::new();
         cut_plane.set_position(Vector3::new(0.0, 0.0, 0.0)); // Start at center
-        cut_plane.set_size(2.0); // 2x2x2 world bounds
+        // Don't set initial size here - will be set after we create the struct with visualization_scale
 
         // Initialize with empty data for now
         let empty_data = vec![0.0; (GRID_WIDTH * GRID_HEIGHT) as usize];
@@ -128,9 +144,20 @@ impl Conways3DGpuSimulation {
             needs_manual_step: false,
             cut_plane_z: 0.5, // Start at middle Z slice
             needs_cut_plane_update: true, // Update visualization on startup
+            show_3d_cubes: true, // Start with 3D cubes enabled
+            cube_objects_created: false,
+            instanced_grid_data: Vec::new(), // No instances initially
+            visualization_scale: 1.0, // Default scale - will be applied to both cut plane and cubes
         };
 
-        // Initialize with random pattern
+        // Set the cut plane size to match the shared visualization scale
+        if let Some(visualization) = simulation.base.get_visualization_mut("cut_plane") {
+            if let Some(cut_plane) = visualization.as_any_mut().downcast_mut::<CutPlane2D>() {
+                cut_plane.set_size(simulation.visualization_scale);
+            }
+        }
+
+        // Initialize with random pattern to see full grid distribution
         simulation.initialize_pattern(Life3DPattern::Random);
 
         // Log initial pattern
@@ -256,6 +283,24 @@ impl Conways3DGpuSimulation {
             }
         }
     }
+
+    /// Convert 3D grid coordinates to world position using shared scale
+    /// Now uses the same scale as the cut plane visualization
+    fn grid_to_world_position(&self, grid_x: u32, grid_y: u32, grid_z: u32) -> Vector3<f32> {
+        // Map grid coordinates [0..GRID_SIZE-1] to normalized coordinates [0.0..1.0]
+        let norm_x = grid_x as f32 / (GRID_SIZE - 1) as f32;
+        let norm_y = grid_y as f32 / (GRID_SIZE - 1) as f32;
+        let norm_z = grid_z as f32 / (GRID_SIZE - 1) as f32;
+        
+        // Convert to world coordinates using shared scale * 2 for cubes only
+        // This maps [0.0..1.0] to [-scale*2..scale*2] centered at origin for cubes
+        let world_x = (norm_x - 0.5) * self.visualization_scale * 2.0;
+        let world_y = (norm_y - 0.5) * self.visualization_scale * 2.0; 
+        let world_z = (norm_z - 0.5) * self.visualization_scale * 2.0;
+        
+        Vector3::new(world_x, world_y, world_z)
+    }
+
 
     /// Extract 2D slice from 3D grid at specified Z position
     fn extract_z_slice(&self, z_normalized: f32) -> Vec<f32> {
@@ -427,14 +472,15 @@ impl Conways3DGpuSimulation {
         // Extract Z slice at current cut plane position
         let slice_data = self.extract_z_slice(self.cut_plane_z);
 
-        // Update cut plane position in 3D space (map 0.0-1.0 to -1.0 to +1.0 in world coords)
-        let world_z = (self.cut_plane_z - 0.5) * 2.0;
+        // Update cut plane position in 3D space using shared scale * 2 to match cube range
+        let world_z = (self.cut_plane_z - 0.5) * self.visualization_scale * 2.0;
 
         // Update visualization
         if let Some(visualization) = self.base.get_visualization_mut("cut_plane") {
             if let Some(cut_plane) = visualization.as_any_mut().downcast_mut::<CutPlane2D>() {
                 cut_plane.update_data(slice_data, self.width, self.height);
                 cut_plane.set_position(Vector3::new(0.0, 0.0, world_z));
+                cut_plane.set_size(self.visualization_scale); // Update size with shared scale
                 cut_plane.update(0.0, Some(device), Some(queue));
             }
         }
@@ -479,6 +525,66 @@ impl Conways3DGpuSimulation {
             gpu_resources.ping_pong_state = !gpu_resources.ping_pong_state;
             self.generation += 1;
         }
+    }
+
+    /// Get positions of all active cells
+    fn get_active_cell_positions(&self) -> Vec<(u32, u32, u32)> {
+        let mut positions = Vec::new();
+        
+        for z in 0..self.depth {
+            for y in 0..self.height {
+                for x in 0..self.width {
+                    let index = ((z * self.height + y) * self.width + x) as usize;
+                    if index < self.cpu_grid.len() && self.cpu_grid[index] {
+                        positions.push((x, y, z));
+                    }
+                }
+            }
+        }
+        positions
+    }
+
+    /// Get the current instanced grid data
+    pub fn get_instanced_grid_data(&self) -> &Vec<(Vector3<f32>, f32, Vector4<f32>)> {
+        &self.instanced_grid_data
+    }
+
+    /// Update instanced grid with current 3D cellular automaton state
+    fn update_instanced_grid(&mut self, _device: &wgpu::Device, _queue: &wgpu::Queue) {
+        if !self.show_3d_cubes {
+            // Store empty instances when disabled
+            self.instanced_grid_data = Vec::new();
+            return;
+        }
+
+        // Generate instance data for active cells
+        // Each grid cell spans (scale*2/GRID_SIZE) world units due to 2x cube scaling
+        // Make cubes fill their grid cells properly
+        let cube_size = (self.visualization_scale * 2.0 / GRID_SIZE as f32) * 0.8;
+        let active_cells = self.get_active_cell_positions();
+        
+        let max_cubes = 8192; // Increase to show more of the grid spatially
+        let cubes_to_show = active_cells.len().min(max_cubes);
+        
+
+        let instances: Vec<(Vector3<f32>, f32, Vector4<f32>)> = active_cells
+            .iter()
+            .take(cubes_to_show)
+            .map(|(x, y, z)| {
+                let world_pos = self.grid_to_world_position(*x, *y, *z);
+                let scale = cube_size;
+                let color = Vector4::new(0.8, 0.2, 0.2, 0.1); // 90% transparent red
+                (world_pos, scale, color)
+            })
+            .collect();
+
+        // Store the instances for later access by the app
+        self.instanced_grid_data = instances.clone();
+        
+        // Store in global state for app access via simulation manager
+        haggis::simulation::manager::SimulationManager::set_global_conway_grid_data(instances);
+        
+
     }
 
     /// Sync GPU results back to CPU and update visualization  
@@ -567,6 +673,8 @@ impl haggis::simulation::traits::Simulation for Conways3DGpuSimulation {
 
     fn update(&mut self, delta_time: f32, scene: &mut haggis::gfx::scene::Scene) {
         self.base.update(delta_time, scene);
+        
+        // Note: 3D cube visualization is now handled via instanced grid in apply_gpu_results_to_scene
     }
 
     fn update_gpu(&mut self, device: &Device, queue: &Queue, _delta_time: f32) {
@@ -591,6 +699,8 @@ impl haggis::simulation::traits::Simulation for Conways3DGpuSimulation {
             self.needs_cut_plane_update = false;
         }
 
+        // Note: 3D cube visualization is handled in update() method with scene objects
+
         // Auto-evolve based on speed setting (if not paused and GPU ready)
         if !self.is_paused && self.speed > 0.0 && self.gpu_resources.is_some() {
             let time_per_generation = 1.0 / self.speed;
@@ -601,6 +711,12 @@ impl haggis::simulation::traits::Simulation for Conways3DGpuSimulation {
             }
         }
 
+        // Update instanced grid with current active cells 
+        self.update_instanced_grid(device, queue);
+        
+        // Note: The actual rendering update happens in the app main loop
+        // where the app can access both the simulation data and render engine
+
         self.base.update_gpu(device, queue, _delta_time);
     }
 
@@ -610,6 +726,9 @@ impl haggis::simulation::traits::Simulation for Conways3DGpuSimulation {
         scene: &mut haggis::gfx::scene::Scene,
     ) {
         self.base.apply_gpu_results_to_scene(device, scene);
+        
+        // The instanced grid data is already updated in update_gpu where we have access to the queue
+        // No additional work needed here
     }
 
     fn render_ui(&mut self, ui: &imgui::Ui) {
@@ -659,6 +778,19 @@ impl haggis::simulation::traits::Simulation for Conways3DGpuSimulation {
 
                 ui.separator();
 
+                // Visualization scale control
+                ui.text("Visualization Scale:");
+                if ui
+                    .slider_config("Scale", 0.5, 5.0)
+                    .display_format("%.1f")
+                    .build(&mut self.visualization_scale)
+                {
+                    // Mark that cut plane needs update when scale changes
+                    self.needs_cut_plane_update = true;
+                }
+
+                ui.separator();
+
                 // Cut plane controls
                 ui.text("Cut Plane (Z-slice):");
                 if ui
@@ -673,6 +805,26 @@ impl haggis::simulation::traits::Simulation for Conways3DGpuSimulation {
                 // Show which Z layer we're viewing
                 let z_layer = ((self.cut_plane_z * (GRID_DEPTH - 1) as f32).round() as u32).min(GRID_DEPTH - 1);
                 ui.text(&format!("Viewing layer {}/{}", z_layer, GRID_DEPTH - 1));
+
+                ui.separator();
+
+                // 3D cube visualization toggle
+                ui.text("3D Visualization:");
+                ui.checkbox("Show 3D Cubes", &mut self.show_3d_cubes);
+                if self.show_3d_cubes {
+                    ui.text_colored([0.0, 1.0, 0.0, 1.0], "✨ GPU Instanced Rendering!");
+                    let active_count = self.get_active_cell_positions().len();
+                    ui.text(&format!("Active cells: {}", active_count));
+                    if active_count > 2000 {
+                        ui.text_colored([1.0, 0.5, 0.0, 1.0], &format!("Showing first 2000 of {}", active_count));
+                    } else {
+                        ui.text_colored([0.0, 1.0, 0.0, 1.0], &format!("Showing all {} cubes", active_count));
+                    }
+                } else {
+                    let active_count = self.get_active_cell_positions().len();
+                    ui.text(&format!("Active cells: {}", active_count));
+                    ui.text_colored([0.5, 0.5, 0.5, 1.0], "3D cubes disabled for performance");
+                }
 
                 ui.separator();
 
@@ -828,9 +980,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     app.attach_simulation(simulation);
 
     // Add reference objects for context (2x2x2 bounds)
-    app.add_object("examples/test/cube.obj")
-        .with_transform([0.0, 0.0, 0.0], 0.1, 0.0)
-        .with_name("Reference Cube at Origin");
+    // Removed center cube - blocks view of Conway cubes
 
     // Boundary markers for 2x2x2 world
     app.add_object("examples/test/cube.obj")
@@ -840,6 +990,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     app.add_object("examples/test/cube.obj")
         .with_transform([1.0, 1.0, 1.0], 0.05, 0.0)
         .with_name("Bound (1,1,1)");
+
+    // Set up UI callback with Transform Studio and Conway 3D controls
+    app.set_ui(|ui, scene, selected_index| {
+        // Show the default Transform Studio panel for object manipulation
+        haggis::ui::panel::default_transform_panel(ui, scene, selected_index);
+        
+        // Custom Conway's Game of Life 3D panel
+        ui.window("Conway 3D Controls")
+            .size([300.0, 200.0], imgui::Condition::FirstUseEver)
+            .position([20.0, 500.0], imgui::Condition::FirstUseEver)
+            .build(|| {
+                ui.text("🧬 3D Conway's Game of Life");
+                ui.separator();
+                ui.text("GPU-accelerated cellular automata");
+                ui.text("Running on instanced grid rendering");
+                ui.separator();
+                ui.text("💡 Use Transform Studio to:");
+                ui.text("  • Select and move reference objects");
+                ui.text("  • Adjust camera and lighting");
+                ui.text("  • Toggle object visibility");
+            });
+    });
 
     // Run the application
     app.show_performance_panel(true);

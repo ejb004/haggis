@@ -8,6 +8,8 @@ pub mod render_engine;
 pub mod render_pass_ext;
 pub mod shadow_cache;
 pub mod visualization_renderer;
+pub mod instanced_renderer;
+pub mod instanced_grid;
 
 // Re-export main types
 pub use pipeline_manager::{PipelineConfig, PipelineManager, PipelineStats};
@@ -15,3 +17,5 @@ pub use render_engine::RenderEngine;
 pub use render_pass_ext::RenderPassExt;
 pub use shadow_cache::{ShadowCache, ShadowCacheStats};
 pub use visualization_renderer::{VisualizationPlane, VisualizationRenderer};
+pub use instanced_renderer::{InstancedRenderer, InstanceData, CubeMesh};
+pub use instanced_grid::{InstancedGrid, GridInstanceData};

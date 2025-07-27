@@ -7,6 +7,10 @@ use super::{base_simulation::BaseSimulation, traits::Simulation};
 use crate::gfx::scene::Scene;
 use imgui::Ui;
 use wgpu::{Device, Queue};
+use std::sync::{Arc, Mutex};
+
+// Global state for Conway instanced grid data - shared between examples and core
+static GLOBAL_CONWAY_GRID_DATA: Mutex<Vec<(cgmath::Vector3<f32>, f32, cgmath::Vector4<f32>)>> = Mutex::new(Vec::new());
 
 /// Manages user simulations within the Haggis engine
 pub struct SimulationManager {
@@ -253,5 +257,30 @@ impl SimulationManager {
             }
         }
         Vec::new()
+    }
+
+    /// Get instanced grid data from Conway 3D simulation if available  
+    pub fn get_instanced_grid_data(&self) -> Option<Vec<(cgmath::Vector3<f32>, f32, cgmath::Vector4<f32>)>> {
+        if let Some(simulation) = &self.simulation {
+            // Check if this is a Conway 3D simulation by name
+            if simulation.name().contains("Conway") {
+                // Get data from global state shared with Conway example
+                if let Ok(data) = GLOBAL_CONWAY_GRID_DATA.lock() {
+                    if !data.is_empty() {
+                        return Some(data.clone());
+                    }
+                }
+                // Return empty vector if no data available
+                return Some(Vec::new());
+            }
+        }
+        None
+    }
+
+    /// Set global Conway instanced grid data (called by Conway simulations)
+    pub fn set_global_conway_grid_data(data: Vec<(cgmath::Vector3<f32>, f32, cgmath::Vector4<f32>)>) {
+        if let Ok(mut global_data) = GLOBAL_CONWAY_GRID_DATA.lock() {
+            *global_data = data;
+        }
     }
 }

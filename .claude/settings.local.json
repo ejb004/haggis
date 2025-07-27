@@ -38,7 +38,8 @@
       "Bash(find . -name \"*backup*\" -o -name \"*2.rs\" -o -name \"*.bak\" -o -name \"*.orig\" -o -name \"*.old\")",
       "Bash(ls -la \"/Users/ethanbeddard/Documents/DigitalProjects/haggis/src/app 2.rs\")",
       "Bash(ls -la \"src/app 2.rs\")",
-      "Bash(cargo clean:*)"
+      "Bash(cargo clean:*)",
+      "Bash(RUST_LOG=debug cargo run --example conways_game_of_life_3d)"
     ],
     "deny": []
   }
