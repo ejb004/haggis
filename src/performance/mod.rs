@@ -138,6 +138,20 @@ impl PerformanceMonitor {
         self.frame_times.push_back(frame_time);
     }
 
+    /// Manually add a frame time (for framerate limiting scenarios)
+    ///
+    /// This allows external timing measurement that includes framerate limiting delays,
+    /// providing accurate FPS readings when the application intentionally limits frame rate.
+    pub fn add_manual_frame_time(&mut self, frame_time: Duration) {
+        self.add_frame_time(frame_time);
+        
+        // Update metrics immediately for manual timing
+        if self.last_update.elapsed() >= self.update_interval {
+            self.update_metrics();
+            self.last_update = std::time::Instant::now();
+        }
+    }
+
     /// Update calculated metrics
     fn update_metrics(&mut self) {
         if self.frame_times.is_empty() {

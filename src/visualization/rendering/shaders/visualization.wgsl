@@ -59,6 +59,26 @@ struct FilterUniforms {
 @group(1) @binding(4)
 var<uniform> filter_uniforms: FilterUniforms;
 
+// Convert vorticity value to directional color
+// Positive vorticity (counter-clockwise) = Red
+// Negative vorticity (clockwise) = Green
+// Zero vorticity = Black
+fn vorticity_to_color(vorticity: f32) -> vec4<f32> {
+    let max_vorticity = 5.0; // Adjusted for airfoil vorticity range
+    let normalized = clamp(abs(vorticity) / max_vorticity, 0.0, 1.0);
+    
+    if (vorticity > 0.0) {
+        // Positive vorticity: Red channel
+        return vec4<f32>(normalized, 0.0, 0.0, 1.0);
+    } else if (vorticity < 0.0) {
+        // Negative vorticity: Green channel
+        return vec4<f32>(0.0, normalized, 0.0, 1.0);
+    } else {
+        // Zero vorticity: Black
+        return vec4<f32>(0.0, 0.0, 0.0, 1.0);
+    }
+}
+
 // Fragment shader with dual mode support
 @fragment
 fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
@@ -78,8 +98,8 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
             
             if (index < arrayLength(&gpu_data_buffer)) {
                 let cell_value = gpu_data_buffer[index];
-                let intensity = f32(cell_value);
-                return vec4<f32>(intensity, intensity, intensity, 1.0);
+                let vorticity = f32(cell_value);
+                return vorticity_to_color(vorticity);
             } else {
                 return vec4<f32>(0.0, 0.0, 0.0, 1.0);
             }
@@ -110,9 +130,9 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
             // Bilinear interpolation
             let top = mix(val_00, val_01, fx);
             let bottom = mix(val_10, val_11, fx);
-            let intensity = mix(top, bottom, fy);
+            let vorticity = mix(top, bottom, fy);
             
-            return vec4<f32>(intensity, intensity, intensity, 1.0);
+            return vorticity_to_color(vorticity);
         }
     } else {
         // Texture-based rendering (CPU data path)

@@ -126,7 +126,7 @@ impl RenderEngine {
             format,
             width,
             height,
-            present_mode: wgpu::PresentMode::Fifo, // VSync enabled by default
+            present_mode: wgpu::PresentMode::Immediate, // High performance by default
             alpha_mode: surface_capabilities.alpha_modes[0],
             view_formats: vec![],
             desired_maximum_frame_latency: 2,
@@ -787,6 +787,25 @@ impl RenderEngine {
                 grid.update(&self.queue, instances);
             }
         }
+    }
+
+    /// Set VSync (vertical synchronization) state
+    ///
+    /// When VSync is enabled, rendering is synchronized to the display refresh rate.
+    /// When disabled, the application can achieve consistent frame times through framerate limiting.
+    ///
+    /// # Arguments
+    /// * `enable` - Whether to enable VSync
+    pub fn set_vsync(&mut self, enable: bool) {
+        // Update the surface configuration with new present mode
+        self.config.present_mode = if enable {
+            wgpu::PresentMode::Fifo        // VSync enabled
+        } else {
+            wgpu::PresentMode::Immediate   // VSync disabled, immediate presentation
+        };
+        
+        // Reconfigure surface with new present mode
+        self.surface.configure(&self.device, &self.config);
     }
 
     /// Render the instanced grid during the main render pass

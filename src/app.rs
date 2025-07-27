@@ -186,6 +186,12 @@ pub struct AppState {
     pub show_performance_panel: bool,
     /// Enable VSync for smoother visuals vs higher FPS
     pub enable_vsync: bool,
+    /// Framerate limit (None = unlimited, Some(fps) = limited)
+    pub framerate_limit: Option<f32>,
+    /// Frame timing for FPS limiting
+    last_frame_time: std::time::Instant,
+    /// Frame timing for performance monitoring (tracks actual frame cycle)
+    last_performance_frame_time: std::time::Instant,
     /// Object picker for mouse selection
     pub object_picker: ObjectPicker,
     /// Current mouse position for picking
@@ -242,7 +248,10 @@ impl HaggisApp {
                 gizmo_manager: crate::gfx::gizmos::GizmoManager::new(),
                 performance_monitor: PerformanceMonitor::new(),
                 show_performance_panel: false, // Hidden by default
-                enable_vsync: true, // Enabled for smoother visuals by default
+                enable_vsync: false, // Disabled when framerate limiting is enabled
+                framerate_limit: Some(144.0), // Higher limit to ensure we hit 120fps target
+                last_frame_time: std::time::Instant::now(),
+                last_performance_frame_time: std::time::Instant::now(),
                 object_picker: ObjectPicker::new(),
                 mouse_position: (0.0, 0.0),
                 ui_wants_input: false,
@@ -617,13 +626,46 @@ impl HaggisApp {
         self.app_state.show_performance_panel = enabled;
     }
 
-    /// Enable or disable VSync (vertical synchronization).
+
+    /// Set framerate limit to prioritize simulation over rendering.
+    ///
+    /// Limits the maximum framerate to free up resources for simulation computation.
+    /// Use None for unlimited framerate, or Some(fps) to set a specific limit.
     /// 
-    /// VSync limits frame rate to monitor refresh rate for smoother visuals
-    /// but reduces maximum FPS. Disable for development/benchmarking.
-    pub fn set_vsync(&mut self, enabled: bool) {
-        self.app_state.enable_vsync = enabled;
-        // Note: VSync setting takes effect on next render engine creation
+    /// # Arguments
+    /// * `limit` - Framerate limit in FPS (None for unlimited)
+    ///
+    /// # Examples
+    /// ```rust
+    /// let mut app = haggis::default();
+    /// app.set_framerate_limit(Some(120.0)); // Limit to 120 FPS
+    /// app.set_framerate_limit(None);        // Unlimited FPS
+    /// ```
+    pub fn set_framerate_limit(&mut self, limit: Option<f32>) {
+        self.app_state.framerate_limit = limit;
+    }
+
+    /// Set VSync (vertical synchronization) state.
+    ///
+    /// When VSync is enabled, the application will sync to the display refresh rate.
+    /// When disabled with framerate limiting, the application can achieve consistent
+    /// frame times regardless of display refresh rate.
+    ///
+    /// # Arguments
+    /// * `enable` - Whether to enable VSync
+    ///
+    /// # Examples
+    /// ```rust
+    /// let mut app = haggis::default();
+    /// app.set_vsync(false); // Disable VSync for consistent framerate limiting
+    /// ```
+    pub fn set_vsync(&mut self, enable: bool) {
+        self.app_state.enable_vsync = enable;
+        
+        // Update render engine surface configuration if available
+        if let Some(render_engine) = &mut self.app_state.render_engine {
+            render_engine.set_vsync(enable);
+        }
     }
 
     /// Get the current performance metrics.
@@ -661,6 +703,7 @@ impl HaggisApp {
     pub fn reset_performance_metrics(&mut self) {
         self.app_state.performance_monitor.reset();
     }
+
 
     /// Runs the application.
     ///
@@ -1030,6 +1073,11 @@ impl ApplicationHandler for AppState {
             self.ui_manager = Some(ui_manager);
             self.render_engine = Some(renderer);
 
+            // Configure VSync based on initial settings
+            if let Some(render_engine) = &mut self.render_engine {
+                render_engine.set_vsync(self.enable_vsync);
+            }
+
             // Initialize GPU resources for current simulation
             if let Some(render_engine) = &mut self.render_engine {
                 self.simulation_manager
@@ -1149,6 +1197,13 @@ impl ApplicationHandler for AppState {
                     return;
                 };
 
+                // Custom frame timing that accounts for framerate limiting
+                let actual_frame_time = self.last_performance_frame_time.elapsed();
+                self.last_performance_frame_time = std::time::Instant::now();
+                
+                // Manually add frame time to performance monitor to show correct limited FPS
+                self.performance_monitor.add_manual_frame_time(actual_frame_time);
+
                 // Calculate actual delta time for simulation
                 let delta_time = 1.0 / 120.0; // Fixed timestep for stability
 
@@ -1180,14 +1235,8 @@ impl ApplicationHandler for AppState {
                         render_engine.update_instanced_grid_data(&Vec::new());
                     }
                 } else {
-                    // Non-Conway simulation - show test cubes at cut plane positions
-                    let test_instances = vec![
-                        (cgmath::Vector3::new(0.0, 0.0, 0.0), 0.2, cgmath::Vector4::new(1.0, 1.0, 0.0, 1.0)), // Yellow test cube at center
-                        (cgmath::Vector3::new(0.5, 0.0, 0.0), 0.1, cgmath::Vector4::new(1.0, 0.0, 0.0, 1.0)), // Red test cube
-                        (cgmath::Vector3::new(0.0, 0.5, 0.0), 0.1, cgmath::Vector4::new(0.0, 1.0, 0.0, 1.0)), // Green test cube
-                        (cgmath::Vector3::new(0.0, 0.0, 0.5), 0.1, cgmath::Vector4::new(0.0, 0.0, 1.0, 1.0)), // Blue test cube
-                    ];
-                    render_engine.update_instanced_grid_data(&test_instances);
+                    // Non-Conway simulation - no instanced cubes for LBM
+                    render_engine.update_instanced_grid_data(&Vec::new());
                 }
 
                 // Update gizmos
@@ -1205,9 +1254,6 @@ impl ApplicationHandler for AppState {
                 // Update materials for scene objects (but not visualizations)
                 self.scene
                     .update_materials(render_engine.device(), render_engine.queue());
-
-                // Begin performance frame tracking
-                self.performance_monitor.begin_frame();
 
                 // Update phase: Scene logic and UI interaction
                 self.scene.update();
@@ -1308,9 +1354,6 @@ impl ApplicationHandler for AppState {
                     render_engine
                         .render_frame_with_visualizations(&self.scene, &visualization_planes);
                 }
-
-                // End performance frame tracking
-                self.performance_monitor.end_frame();
             }
             _ => (),
         }
@@ -1349,15 +1392,33 @@ impl ApplicationHandler for AppState {
 
     /// Called when the event loop is about to wait for new events.
     ///
-    /// This method requests a redraw to maintain smooth animation and responsive UI.
-    /// It ensures continuous rendering for real-time simulations and interactions.
+    /// This method manages framerate limiting and requests redraws at the appropriate time.
+    /// It ensures continuous rendering while respecting framerate limits for performance.
     ///
     /// # Arguments
     ///
     /// * `_event_loop` - The active event loop (unused)
     fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
         if let Some(ref window) = self.window {
-            window.request_redraw();
+            // Apply framerate limiting here to control redraw frequency
+            if let Some(fps_limit) = self.framerate_limit {
+                let target_frame_time = std::time::Duration::from_secs_f32(1.0 / fps_limit);
+                let elapsed = self.last_frame_time.elapsed();
+                
+                if elapsed >= target_frame_time {
+                    // Enough time has passed, request redraw
+                    self.last_frame_time = std::time::Instant::now();
+                    window.request_redraw();
+                } else {
+                    // Not enough time has passed, just short sleep
+                    // The simulation runs continuously in its own update loop, 
+                    // we don't need to drive it from the framerate limiter
+                    std::thread::sleep(std::time::Duration::from_millis(1));
+                }
+            } else {
+                // No framerate limit, request redraw immediately
+                window.request_redraw();
+            }
         }
     }
 }
