@@ -16,9 +16,9 @@
 //!
 //! ### Basic Particle System
 //! ```no_run
-//! use haggis::simulation::high_level::ParticleSystem;
+//! use haggis::simulation::builders::ParticleSystemBuilder;
 //!
-//! let particles = ParticleSystem::new()
+//! let particles = ParticleSystemBuilder::new()
 //!     .with_count(1000)
 //!     .with_gravity([0.0, 0.0, -9.8])
 //!     .with_bounds([-10.0, 10.0], [-10.0, 10.0], [0.0, 20.0])
@@ -35,32 +35,34 @@
 
 use crate::gfx::scene::Scene;
 use crate::simulation::traits::Simulation;
+use crate::builder::CommonConfig;
+use crate::compute::ComputeEngine;
 use cgmath::{InnerSpace, Vector3};
 use rand::Rng;
+use bytemuck::{Pod, Zeroable};
 
 /// High-level particle system with automatic resource management
 pub struct ParticleSystem {
-    particles: Vec<Particle>,
-    forces: Vec<ForceField>,
-    constraints: Vec<Constraint>,
-    settings: ParticleSettings,
-    #[allow(dead_code)]
-    use_gpu: bool,
-    needs_gpu_update: bool,
-    #[allow(dead_code)]
-    gpu_resources: Option<GpuParticleResources>,
+    pub particles: Vec<Particle>,
+    pub forces: Vec<ForceField>,
+    pub constraints: Vec<Constraint>,
+    pub settings: ParticleSettings,
+    pub compute_engine: Option<ComputeEngine>,
+    pub common: CommonConfig,
 }
 
-/// Individual particle data
-#[derive(Clone, Debug)]
+/// Individual particle data (GPU-compatible)
+#[repr(C)]
+#[derive(Clone, Debug, Copy, Pod, Zeroable)]
 pub struct Particle {
-    pub position: Vector3<f32>,
-    pub velocity: Vector3<f32>,
-    pub acceleration: Vector3<f32>,
+    pub position: [f32; 3],
+    pub velocity: [f32; 3], 
+    pub acceleration: [f32; 3],
     pub mass: f32,
     pub lifetime: f32,
     pub max_lifetime: f32,
-    pub active: bool,
+    pub active: u32, // GPU-compatible bool
+    pub _padding: u32,
 }
 
 /// Force field types for particle simulation
@@ -119,15 +121,6 @@ pub struct ParticleSettings {
     pub gpu_threshold: usize, // Switch to GPU when particle count exceeds this
 }
 
-/// GPU resources for particle simulation
-#[allow(dead_code)]
-struct GpuParticleResources {
-    // This will be populated when we implement GPU support
-    particle_buffer: Option<wgpu::Buffer>,
-    compute_pipeline: Option<wgpu::ComputePipeline>,
-    bind_group: Option<wgpu::BindGroup>,
-}
-
 impl Default for ParticleSettings {
     fn default() -> Self {
         Self {
@@ -146,479 +139,307 @@ impl Default for ParticleSettings {
 impl Default for Particle {
     fn default() -> Self {
         Self {
-            position: Vector3::new(0.0, 0.0, 0.0),
-            velocity: Vector3::new(0.0, 0.0, 0.0),
-            acceleration: Vector3::new(0.0, 0.0, 0.0),
+            position: [0.0, 0.0, 0.0],
+            velocity: [0.0, 0.0, 0.0],
+            acceleration: [0.0, 0.0, 0.0],
             mass: 1.0,
             lifetime: 5.0,
             max_lifetime: 5.0,
-            active: true,
+            active: 1,
+            _padding: 0,
+        }
+    }
+}
+
+// Helper functions for Vector3 <-> array conversion
+fn vec3_to_array(v: Vector3<f32>) -> [f32; 3] {
+    [v.x, v.y, v.z]
+}
+
+fn array_to_vec3(a: [f32; 3]) -> Vector3<f32> {
+    Vector3::new(a[0], a[1], a[2])
+}
+
+impl ForceField {
+    /// Create uniform force field
+    pub fn uniform(force: [f32; 3]) -> Self {
+        ForceField::Uniform {
+            force: array_to_vec3(force),
+        }
+    }
+
+    /// Create gravity force field
+    pub fn gravity(acceleration: [f32; 3]) -> Self {
+        ForceField::Gravity {
+            acceleration: array_to_vec3(acceleration),
+        }
+    }
+
+    /// Create point attractor/repulsor
+    pub fn point(position: [f32; 3], strength: f32) -> Self {
+        ForceField::Point {
+            position: array_to_vec3(position),
+            strength,
         }
     }
 }
 
 impl ParticleSystem {
-    /// Creates a new particle system builder
-    pub fn new() -> ParticleSystemBuilder {
-        ParticleSystemBuilder::default()
+    /// Creates a new particle system with default settings
+    pub fn new() -> Self {
+        let settings = ParticleSettings::default();
+        let particles = (0..settings.count)
+            .map(|_| Particle::default())
+            .collect();
+
+        Self {
+            particles,
+            forces: Vec::new(),
+            constraints: Vec::new(),
+            settings,
+            compute_engine: None,
+            common: CommonConfig::default(),
+        }
     }
 
     /// Adds a force field to the system
     pub fn add_force(&mut self, force: ForceField) -> &mut Self {
         self.forces.push(force);
-        self.needs_gpu_update = true;
         self
     }
 
     /// Adds a constraint to the system
     pub fn add_constraint(&mut self, constraint: Constraint) -> &mut Self {
         self.constraints.push(constraint);
-        self.needs_gpu_update = true;
         self
     }
 
     /// Spawns a new particle at the given position
-    pub fn spawn_particle(&mut self, position: Vector3<f32>, velocity: Vector3<f32>) {
-        if let Some(particle) = self.particles.iter_mut().find(|p| !p.active) {
+    pub fn spawn_particle(&mut self, position: [f32; 3], velocity: [f32; 3]) {
+        if let Some(particle) = self.particles.iter_mut().find(|p| p.active == 0) {
             particle.position = position;
             particle.velocity = velocity;
-            particle.acceleration = Vector3::new(0.0, 0.0, 0.0);
+            particle.acceleration = [0.0, 0.0, 0.0];
             particle.lifetime = self.settings.default_lifetime;
             particle.max_lifetime = self.settings.default_lifetime;
-            particle.active = true;
+            particle.active = 1;
         }
     }
 
-    /// Updates the particle system
+    /// Updates the particle system using CPU
     fn update_cpu(&mut self, delta_time: f32) {
         let scaled_dt = delta_time * self.settings.time_scale;
+        let damping = self.settings.damping;
+        let auto_respawn = self.settings.auto_respawn;
+        let default_lifetime = self.settings.default_lifetime;
 
-        for particle in &mut self.particles {
-            if !particle.active {
+        // Clone forces and constraints to avoid borrowing issues
+        let forces = self.forces.clone();
+        let constraints = self.constraints.clone();
+
+        for particle in self.particles.iter_mut() {
+            if particle.active == 0 {
                 continue;
             }
 
             // Reset acceleration
-            particle.acceleration = Vector3::new(0.0, 0.0, 0.0);
+            particle.acceleration = [0.0, 0.0, 0.0];
 
             // Apply forces
-            for force in &self.forces {
-                let force_vector = match force {
-                    ForceField::Uniform { force } => *force,
-                    ForceField::Gravity { acceleration } => *acceleration * particle.mass,
-                    ForceField::Point { position, strength } => {
-                        let direction = *position - particle.position;
-                        let distance = direction.magnitude();
-                        if distance > 0.001 {
-                            direction.normalize() * (*strength / (distance * distance))
-                        } else {
-                            Vector3::new(0.0, 0.0, 0.0)
-                        }
-                    }
-                    ForceField::Radial { center, strength } => {
-                        let direction = particle.position - *center;
-                        let distance = direction.magnitude();
-                        if distance > 0.001 {
-                            direction.normalize() * (*strength / distance)
-                        } else {
-                            Vector3::new(0.0, 0.0, 0.0)
-                        }
-                    }
-                    ForceField::Vortex {
-                        center,
-                        axis,
-                        strength,
-                    } => {
-                        let to_particle = particle.position - *center;
-                        let axis_component = axis.dot(to_particle) * *axis;
-                        let radial = to_particle - axis_component;
-                        let tangent = axis.cross(radial);
-                        tangent.normalize() * (*strength / (radial.magnitude() + 0.001))
-                    }
-                };
-                particle.acceleration += force_vector / particle.mass;
-            }
-
-            // Update physics
-            particle.velocity += particle.acceleration * scaled_dt;
-            particle.velocity *= self.settings.damping;
-            particle.position += particle.velocity * scaled_dt;
+            Self::apply_forces_to_particle(&forces, particle);
 
             // Apply constraints
-            for constraint in &self.constraints {
-                match constraint {
-                    Constraint::Box { min, max, bounce } => {
-                        for i in 0..3 {
-                            if particle.position[i] < min[i] {
-                                particle.position[i] = min[i];
-                                particle.velocity[i] *= -*bounce;
-                            } else if particle.position[i] > max[i] {
-                                particle.position[i] = max[i];
-                                particle.velocity[i] *= -*bounce;
-                            }
-                        }
-                    }
-                    Constraint::Sphere {
-                        center,
-                        radius,
-                        bounce,
-                    } => {
-                        let to_center = particle.position - *center;
-                        let distance = to_center.magnitude();
-                        if distance > *radius {
-                            let direction = to_center.normalize();
-                            particle.position = *center + direction * *radius;
-                            let velocity_along_normal = particle.velocity.dot(direction);
-                            particle.velocity -=
-                                direction * velocity_along_normal * (1.0 + *bounce);
-                        }
-                    }
-                    Constraint::Ground { height, bounce } => {
-                        if particle.position.z < *height {
-                            particle.position.z = *height;
-                            particle.velocity.z *= -*bounce;
-                        }
-                    }
-                    Constraint::MaxVelocity { max_speed } => {
-                        let speed = particle.velocity.magnitude();
-                        if speed > *max_speed {
-                            particle.velocity = particle.velocity.normalize() * *max_speed;
-                        }
-                    }
-                }
-            }
+            Self::apply_constraints_to_particle(&constraints, particle);
+
+            // Integrate physics
+            Self::integrate_particle(particle, scaled_dt, damping);
 
             // Update lifetime
             particle.lifetime -= scaled_dt;
             if particle.lifetime <= 0.0 {
-                if self.settings.auto_respawn {
-                    particle.lifetime = self.settings.default_lifetime;
-                    let mut rng = rand::rng();
-                    particle.position = Vector3::new(
-                        (rng.random::<f32>() - 0.5) * 2.0,
-                        (rng.random::<f32>() - 0.5) * 2.0,
-                        rng.random::<f32>() * 5.0,
-                    );
-                    particle.velocity = Vector3::new(
-                        (rng.random::<f32>() - 0.5) * 4.0,
-                        (rng.random::<f32>() - 0.5) * 4.0,
-                        rng.random::<f32>() * 2.0,
-                    );
+                if auto_respawn {
+                    Self::respawn_particle(particle, default_lifetime);
                 } else {
-                    particle.active = false;
+                    particle.active = 0;
                 }
             }
         }
     }
 
-    /// Gets active particle count
-    pub fn active_count(&self) -> usize {
-        self.particles.iter().filter(|p| p.active).count()
-    }
+    fn apply_forces_to_particle(forces: &[ForceField], particle: &mut Particle) {
+        for force in forces {
+            let force_vector = match force {
+                ForceField::Uniform { force } => *force,
+                ForceField::Gravity { acceleration } => *acceleration * particle.mass,
+                ForceField::Point { position, strength } => {
+                    let pos_vec = array_to_vec3(particle.position);
+                    let direction = *position - pos_vec;
+                    let distance_sq = direction.magnitude2();
+                    if distance_sq > 0.001 {
+                        direction.normalize() * *strength / distance_sq
+                    } else {
+                        Vector3::new(0.0, 0.0, 0.0)
+                    }
+                }
+                ForceField::Radial { center, strength } => {
+                    let pos_vec = array_to_vec3(particle.position);
+                    let direction = pos_vec - *center;
+                    let distance = direction.magnitude();
+                    if distance > 0.001 {
+                        direction.normalize() * *strength / (distance * distance)
+                    } else {
+                        Vector3::new(0.0, 0.0, 0.0)
+                    }
+                }
+                ForceField::Vortex { center, axis, strength } => {
+                    let pos_vec = array_to_vec3(particle.position);
+                    let offset = pos_vec - *center;
+                    let tangent = axis.cross(offset);
+                    tangent.normalize() * *strength
+                }
+            };
 
-    /// Gets reference to particles for rendering
-    pub fn particles(&self) -> &[Particle] {
-        &self.particles
-    }
-}
-
-/// Builder for creating particle systems
-pub struct ParticleSystemBuilder {
-    settings: ParticleSettings,
-    forces: Vec<ForceField>,
-    constraints: Vec<Constraint>,
-    use_gpu: Option<bool>,
-}
-
-impl Default for ParticleSystemBuilder {
-    fn default() -> Self {
-        Self {
-            settings: ParticleSettings::default(),
-            forces: Vec::new(),
-            constraints: Vec::new(),
-            use_gpu: None,
-        }
-    }
-}
-
-impl ParticleSystemBuilder {
-    /// Sets the number of particles
-    pub fn with_count(mut self, count: usize) -> Self {
-        self.settings.count = count;
-        self
-    }
-
-    /// Sets the spawn rate (particles per second)
-    pub fn with_spawn_rate(mut self, rate: f32) -> Self {
-        self.settings.spawn_rate = rate;
-        self
-    }
-
-    /// Sets the default particle lifetime
-    pub fn with_lifetime(mut self, lifetime: f32) -> Self {
-        self.settings.default_lifetime = lifetime;
-        self
-    }
-
-    /// Adds gravity force
-    pub fn with_gravity(mut self, acceleration: [f32; 3]) -> Self {
-        self.forces.push(ForceField::Gravity {
-            acceleration: Vector3::new(acceleration[0], acceleration[1], acceleration[2]),
-        });
-        self
-    }
-
-    /// Adds uniform force
-    pub fn with_force(mut self, force: [f32; 3]) -> Self {
-        self.forces.push(ForceField::Uniform {
-            force: Vector3::new(force[0], force[1], force[2]),
-        });
-        self
-    }
-
-    /// Adds box boundary constraint
-    pub fn with_bounds(mut self, x_range: [f32; 2], y_range: [f32; 2], z_range: [f32; 2]) -> Self {
-        self.constraints.push(Constraint::Box {
-            min: Vector3::new(x_range[0], y_range[0], z_range[0]),
-            max: Vector3::new(x_range[1], y_range[1], z_range[1]),
-            bounce: 0.8,
-        });
-        self
-    }
-
-    /// Adds ground plane constraint
-    pub fn with_ground(mut self, height: f32) -> Self {
-        self.constraints.push(Constraint::Ground {
-            height,
-            bounce: 0.6,
-        });
-        self
-    }
-
-    /// Sets damping factor
-    pub fn with_damping(mut self, damping: f32) -> Self {
-        self.settings.damping = damping;
-        self
-    }
-
-    /// Forces GPU usage (if available)
-    pub fn use_gpu(mut self) -> Self {
-        self.use_gpu = Some(true);
-        self
-    }
-
-    /// Forces CPU usage
-    pub fn use_cpu(mut self) -> Self {
-        self.use_gpu = Some(false);
-        self
-    }
-
-    /// Builds the particle system
-    pub fn build(self) -> ParticleSystem {
-        let should_use_gpu = self
-            .use_gpu
-            .unwrap_or_else(|| self.settings.count > self.settings.gpu_threshold);
-
-        let mut particles = Vec::with_capacity(self.settings.count);
-        for _ in 0..self.settings.count {
-            particles.push(Particle::default());
-        }
-
-        // Initialize particles with random positions and velocities
-        let mut rng = rand::rng();
-        for particle in &mut particles {
-            particle.position = Vector3::new(
-                (rng.random::<f32>() - 0.5) * 2.0,
-                (rng.random::<f32>() - 0.5) * 2.0,
-                rng.random::<f32>() * 5.0,
-            );
-            particle.velocity = Vector3::new(
-                (rng.random::<f32>() - 0.5) * 4.0,
-                (rng.random::<f32>() - 0.5) * 4.0,
-                rng.random::<f32>() * 2.0,
-            );
-        }
-
-        ParticleSystem {
-            particles,
-            forces: self.forces,
-            constraints: self.constraints,
-            settings: self.settings,
-            use_gpu: should_use_gpu,
-            needs_gpu_update: true,
-            gpu_resources: None,
-        }
-    }
-}
-
-/// Wrapper to implement Simulation trait for ParticleSystem
-pub struct ParticleSimulation {
-    system: ParticleSystem,
-    name: String,
-    running: bool,
-}
-
-impl ParticleSimulation {
-    /// Creates a new particle simulation
-    pub fn new(name: String, system: ParticleSystem) -> Self {
-        Self {
-            system,
-            name,
-            running: true,
+            let force_array = vec3_to_array(force_vector);
+            particle.acceleration[0] += force_array[0] / particle.mass;
+            particle.acceleration[1] += force_array[1] / particle.mass;
+            particle.acceleration[2] += force_array[2] / particle.mass;
         }
     }
 
-    /// Gets mutable reference to the particle system
-    pub fn system_mut(&mut self) -> &mut ParticleSystem {
-        &mut self.system
-    }
+    fn apply_constraints_to_particle(constraints: &[Constraint], particle: &mut Particle) {
+        for constraint in constraints {
+            match constraint {
+                Constraint::Box { min, max, bounce } => {
+                    let pos_vec = array_to_vec3(particle.position);
+                    let vel_vec = array_to_vec3(particle.velocity);
+                    let mut new_pos = pos_vec;
+                    let mut new_vel = vel_vec;
 
-    /// Gets reference to the particle system
-    pub fn system(&self) -> &ParticleSystem {
-        &self.system
-    }
-}
+                    // Check boundaries and bounce
+                    for i in 0..3 {
+                        if new_pos[i] < min[i] {
+                            new_pos[i] = min[i];
+                            new_vel[i] = -new_vel[i] * bounce;
+                        } else if new_pos[i] > max[i] {
+                            new_pos[i] = max[i];
+                            new_vel[i] = -new_vel[i] * bounce;
+                        }
+                    }
 
-impl Simulation for ParticleSimulation {
-    fn initialize(&mut self, _scene: &mut Scene) {
-        // Initialization is handled in the builder
-    }
+                    particle.position = vec3_to_array(new_pos);
+                    particle.velocity = vec3_to_array(new_vel);
+                }
+                Constraint::Sphere { center, radius, bounce } => {
+                    let pos_vec = array_to_vec3(particle.position);
+                    let offset = pos_vec - *center;
+                    let distance = offset.magnitude();
 
-    fn update(&mut self, delta_time: f32, scene: &mut Scene) {
-        if !self.running {
-            return;
-        }
+                    if distance > *radius {
+                        let normal = offset / distance;
+                        let new_pos = *center + normal * *radius;
+                        particle.position = vec3_to_array(new_pos);
 
-        // Update particle system
-        self.system.update_cpu(delta_time);
-
-        // Update scene objects based on particle positions
-        // This is where we would sync particle positions to scene objects
-        // For now, we'll just update the first few objects if they exist
-        let active_particles: Vec<_> = self
-            .system
-            .particles
-            .iter()
-            .filter(|p| p.active)
-            .take(scene.objects.len())
-            .collect();
-
-        for (i, particle) in active_particles.iter().enumerate() {
-            if let Some(object) = scene.objects.get_mut(i) {
-                object.set_translation(particle.position);
+                        let vel_vec = array_to_vec3(particle.velocity);
+                        let vel_along_normal = vel_vec.dot(normal);
+                        if vel_along_normal > 0.0 {
+                            let new_vel = vel_vec - normal * vel_along_normal * (1.0 + *bounce);
+                            particle.velocity = vec3_to_array(new_vel);
+                        }
+                    }
+                }
+                Constraint::Ground { height, bounce } => {
+                    if particle.position[2] < *height {
+                        particle.position[2] = *height;
+                        particle.velocity[2] = -particle.velocity[2] * bounce;
+                    }
+                }
+                Constraint::MaxVelocity { max_speed } => {
+                    let vel_vec = array_to_vec3(particle.velocity);
+                    let speed = vel_vec.magnitude();
+                    if speed > *max_speed {
+                        let new_vel = vel_vec / speed * *max_speed;
+                        particle.velocity = vec3_to_array(new_vel);
+                    }
+                }
             }
         }
+    }
+
+    fn integrate_particle(particle: &mut Particle, dt: f32, damping: f32) {
+        // Velocity Verlet integration
+        particle.velocity[0] += particle.acceleration[0] * dt;
+        particle.velocity[1] += particle.acceleration[1] * dt;
+        particle.velocity[2] += particle.acceleration[2] * dt;
+
+        // Apply damping
+        particle.velocity[0] *= damping;
+        particle.velocity[1] *= damping;
+        particle.velocity[2] *= damping;
+
+        // Update position
+        particle.position[0] += particle.velocity[0] * dt;
+        particle.position[1] += particle.velocity[1] * dt;
+        particle.position[2] += particle.velocity[2] * dt;
+    }
+
+    fn respawn_particle(particle: &mut Particle, default_lifetime: f32) {
+        // Simple respawn at origin with random velocity
+        let mut rng = rand::rng();
+        particle.position = [0.0, 0.0, 0.0];
+        particle.velocity = [
+            rng.random_range(-1.0..1.0),
+            rng.random_range(-1.0..1.0),
+            rng.random_range(-1.0..1.0),
+        ];
+        particle.acceleration = [0.0, 0.0, 0.0];
+        particle.lifetime = default_lifetime;
+        particle.active = 1;
+    }
+}
+
+impl Simulation for ParticleSystem {
+    fn initialize(&mut self, _scene: &mut Scene) {
+        // Initialize particles if needed
+    }
+    
+    fn update(&mut self, delta_time: f32, _scene: &mut Scene) {
+        self.update_cpu(delta_time);
     }
 
     fn render_ui(&mut self, ui: &imgui::Ui) {
-        ui.window(&format!("{} - Particles", self.name))
-            .size([300.0, 200.0], imgui::Condition::FirstUseEver)
-            .build(|| {
-                ui.text(format!("Active Particles: {}", self.system.active_count()));
-                ui.text(format!("Total Particles: {}", self.system.particles.len()));
+        ui.window("Particle System").build(|| {
+            ui.text(format!("Particles: {}", self.particles.len()));
+            ui.text(format!("Forces: {}", self.forces.len()));
+            ui.text(format!("Constraints: {}", self.constraints.len()));
 
-                ui.separator();
+            let active_count = self.particles.iter().filter(|p| p.active == 1).count();
+            ui.text(format!("Active: {}", active_count));
 
-                ui.text("Settings:");
-                ui.text(format!(
-                    "Time Scale: {:.2}",
-                    self.system.settings.time_scale
-                ));
-                ui.text(format!("Damping: {:.2}", self.system.settings.damping));
-                ui.text(format!("Forces: {}", self.system.forces.len()));
-                ui.text(format!("Constraints: {}", self.system.constraints.len()));
-
-                ui.separator();
-
-                if ui.button("Reset Particles") {
-                    for particle in &mut self.system.particles {
-                        particle.active = true;
-                        particle.lifetime = self.system.settings.default_lifetime;
-                        particle.position = Vector3::new(
-                            (rand::random::<f32>() - 0.5) * 2.0,
-                            (rand::random::<f32>() - 0.5) * 2.0,
-                            rand::random::<f32>() * 5.0,
-                        );
-                        particle.velocity = Vector3::new(
-                            (rand::random::<f32>() - 0.5) * 4.0,
-                            (rand::random::<f32>() - 0.5) * 4.0,
-                            rand::random::<f32>() * 2.0,
-                        );
-                    }
-                }
-            });
+            ui.slider("Spawn Rate", 0.1, 100.0, &mut self.settings.spawn_rate);
+            ui.slider("Damping", 0.0, 1.0, &mut self.settings.damping);
+            ui.slider("Time Scale", 0.1, 5.0, &mut self.settings.time_scale);
+        });
     }
-
+    
     fn name(&self) -> &str {
-        &self.name
+        self.common.name.as_deref().unwrap_or("Particle System")
     }
-
+    
     fn is_running(&self) -> bool {
-        self.running
+        self.common.enabled
     }
-
+    
     fn set_running(&mut self, running: bool) {
-        self.running = running;
+        self.common.enabled = running;
     }
-
+    
     fn reset(&mut self, _scene: &mut Scene) {
-        // Reset all particles
-        for particle in &mut self.system.particles {
-            particle.active = true;
-            particle.lifetime = self.system.settings.default_lifetime;
-            particle.position = Vector3::new(
-                (rand::random::<f32>() - 0.5) * 2.0,
-                (rand::random::<f32>() - 0.5) * 2.0,
-                rand::random::<f32>() * 5.0,
-            );
-            particle.velocity = Vector3::new(
-                (rand::random::<f32>() - 0.5) * 4.0,
-                (rand::random::<f32>() - 0.5) * 4.0,
-                rand::random::<f32>() * 2.0,
-            );
+        for particle in &mut self.particles {
+            *particle = Particle::default();
         }
     }
-
+    
     fn as_any(&self) -> &dyn std::any::Any {
         self
-    }
-}
-
-/// Convenience functions for common simulation patterns
-impl ParticleSystem {
-    /// Creates a basic gravity-based particle system
-    pub fn gravity_fountain(count: usize, gravity_strength: f32) -> ParticleSystem {
-        ParticleSystem::new()
-            .with_count(count)
-            .with_gravity([0.0, 0.0, -gravity_strength])
-            .with_ground(0.0)
-            .with_damping(0.95)
-            .build()
-    }
-
-    /// Creates a particle system with wind effects
-    pub fn wind_particles(count: usize, wind_force: [f32; 3]) -> ParticleSystem {
-        ParticleSystem::new()
-            .with_count(count)
-            .with_force(wind_force)
-            .with_bounds([-5.0, 5.0], [-5.0, 5.0], [0.0, 10.0])
-            .with_damping(0.99)
-            .build()
-    }
-
-    /// Creates an explosion-style particle system
-    pub fn explosion(count: usize, center: [f32; 3], strength: f32) -> ParticleSystem {
-        let mut builder = ParticleSystem::new()
-            .with_count(count)
-            .with_lifetime(3.0)
-            .with_damping(0.95);
-
-        // Add radial force for explosion effect
-        builder.forces.push(ForceField::Radial {
-            center: Vector3::new(center[0], center[1], center[2]),
-            strength,
-        });
-
-        builder.build()
     }
 }

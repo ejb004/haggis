@@ -49,6 +49,8 @@
 //! - [`wgpu_utils`] - Utility functions for wgpu resource management
 
 pub mod app;
+pub mod builder;
+pub mod compute;
 pub mod gfx;
 pub mod performance;
 pub mod prelude;
@@ -60,6 +62,12 @@ pub mod wgpu_utils;
 // Re-export main types for convenience
 pub use app::HaggisApp;
 pub use ui::{UiFont, UiStyle};
+
+// Re-export builder types
+pub use builder::{Builder, CommonConfig, ConfigurableBuilder, ExecutionHint};
+
+// Re-export compute types
+pub use compute::{ComputeEngine, ComputeBuilder, ComputeOperation};
 
 // Re-export visualization types for external use
 pub use visualization::{CutPlane2D, VisualizationComponent, VisualizationManager};

@@ -1,46 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Bash(cargo build:*)",
-      "Bash(ls:*)",
-      "mcp__ide__getDiagnostics",
       "Bash(cargo check:*)",
-      "Bash(cargo test)",
-      "Bash(cargo test:*)",
-      "Bash(mkdir:*)",
-      "Bash(grep:*)",
-      "Bash(for example in simple_particles physics_demo flocking_simulation custom_forces hybrid_cpu_gpu performance_comparison custom_compute_shader manual_buffer_management advanced_rendering)",
-      "Bash(do echo \"Checking $example...\")",
-      "Bash(echo:*)",
-      "Bash(done)",
-      "Bash(mv:*)",
-      "Bash(rm:*)",
       "Bash(cargo run:*)",
-      "Bash(timeout 5 cargo run --example quickstart --quiet)",
-      "Bash(gtimeout 3 cargo run --example quickstart --quiet)",
-      "Bash(find:*)",
-      "Bash(timeout 8s cargo run --example test)",
-      "Bash(timeout 8 cargo run --example cut_plane_demo)",
-      "Bash(timeout:*)",
-      "Bash(true)",
-      "Bash(gtimeout 3 cargo run --example cut_plane_demo)",
-      "Bash(gtimeout 10 cargo run --example cut_plane_demo)",
-      "Bash(cargo fmt:*)",
-      "Bash(cargo clippy:*)",
-      "Bash(rustc:*)",
-      "Bash(rg:*)",
-      "Bash(git add:*)",
-      "Bash(./test_debug_panel)",
-      "Bash(git checkout:*)",
-      "Bash(RUST_LOG=debug cargo check)",
-      "Bash(find . -name \"*.obj\" -o -name \"*.ttf\" -o -name \"*.png\" -o -name \"*.gif\" -o -name \"*.jpg\" -o -name \"*.jpeg\" -o -name \"*.mp4\" -o -name \"*.mkv\" -o -name \"*.mov\")",
-      "Bash(find . -name \"*.md\")",
-      "Bash(find . -name \"*backup*\" -o -name \"*2.rs\" -o -name \"*.bak\" -o -name \"*.orig\" -o -name \"*.old\")",
-      "Bash(ls -la \"/Users/ethanbeddard/Documents/DigitalProjects/haggis/src/app 2.rs\")",
-      "Bash(ls -la \"src/app 2.rs\")",
-      "Bash(cargo clean:*)",
-      "Bash(RUST_LOG=debug cargo run --example conways_game_of_life_3d)"
+      "Bash(timeout:*)"
     ],
-    "deny": []
+    "deny": [],
+    "ask": []
   }
 }

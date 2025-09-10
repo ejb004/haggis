@@ -59,6 +59,10 @@ exclude = [
 [lib]
 path = "src/lib.rs"
 
+[[bin]]
+name = "haggis-conways-game-of-life"
+path = "src/bin/conways_game_of_life.rs"
+
 [dependencies]
 winit = "0.30.11"
 env_logger = "0.11.8"

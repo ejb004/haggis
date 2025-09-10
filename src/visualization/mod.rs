@@ -26,6 +26,7 @@
 //! viz_manager.add_component("cut_plane", Box::new(cut_plane));
 //! ```
 
+pub mod builders;
 pub mod cut_plane_2d;
 pub mod manager;
 pub mod rendering;

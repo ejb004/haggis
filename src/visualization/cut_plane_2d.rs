@@ -7,6 +7,7 @@ use super::rendering::VisualizationMaterial;
 use super::traits::VisualizationComponent;
 use super::ui::cut_plane_controls::{FilterMode, VisualizationMode};
 use crate::gfx::{resources::texture_resource::TextureResource, scene::Scene};
+use crate::builder::{Builder, CommonConfig, ConfigurableBuilder};
 use cgmath::Vector3;
 use imgui::Ui;
 use wgpu::{Device, Queue, Buffer};
@@ -85,6 +86,47 @@ impl CutPlane2D {
             pan: [0.0, 0.0],
             data_source: None,
             cpu_data_dimensions: None,
+            material: None,
+            position: Vector3::new(0.0, 0.0, 0.0),
+            size: 2.0,
+            needs_material_update: true,
+            needs_scene_object_update: true,
+            needs_filter_update: false,
+        }
+    }
+    
+    /// Create with configuration from builder
+    pub fn new_with_config(
+        data_source: DataSource,
+        mode: VisualizationMode,
+        filter: FilterMode,
+        _position: f32,
+        _axis: u8,
+        _min_value: f32,
+        _max_value: f32,
+        _common: crate::builder::CommonConfig,
+    ) -> Self {
+        let (cpu_dimensions, source) = match data_source {
+            DataSource::CpuData(data) => {
+                // For CPU data, we need to know dimensions
+                // This is a limitation of the current design - we'll default to square
+                let size = (data.len() as f32).sqrt() as u32;
+                (Some((size, size)), DataSource::CpuData(data))
+            }
+            DataSource::GpuBuffer { buffer, format } => {
+                (None, DataSource::GpuBuffer { buffer, format })
+            }
+        };
+        
+        Self {
+            enabled: true,
+            mode,
+            filter_mode: filter,
+            last_filter_mode: filter,
+            zoom: 1.0,
+            pan: [0.0, 0.0],
+            data_source: Some(source),
+            cpu_data_dimensions: cpu_dimensions,
             material: None,
             position: Vector3::new(0.0, 0.0, 0.0),
             size: 2.0,

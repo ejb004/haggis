@@ -35,6 +35,8 @@
 //! - GPU resource management
 //! - Builder pattern configuration
 
+pub mod builders;
+pub use builders::*;
 pub mod object;
 pub mod scene;
 pub mod vertex;

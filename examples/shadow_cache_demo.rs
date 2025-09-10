@@ -28,14 +28,24 @@ fn main() {
         .with_transform([0.0, 0.0, 0.0], 2.0, 0.0);
 
     // Add materials for better visuals
-    app.app_state.scene.add_material_rgb("MonkeyMat", 0.8, 0.3, 0.2, 0.1, 0.7);
-    app.app_state.scene.add_material_rgb("CubeMat", 0.2, 0.7, 0.8, 0.2, 0.5);
-    app.app_state.scene.add_material_rgb("GroundMat", 0.5, 0.5, 0.5, 0.0, 0.9);
+    app.app_state
+        .scene
+        .add_material_rgb("MonkeyMat", 0.8, 0.3, 0.2, 0.1, 0.7);
+    app.app_state
+        .scene
+        .add_material_rgb("CubeMat", 0.2, 0.7, 0.8, 0.2, 0.5);
+    app.app_state
+        .scene
+        .add_material_rgb("GroundMat", 0.5, 0.5, 0.5, 0.0, 0.9);
 
     // Assign materials to objects
-    app.app_state.scene.assign_material_to_object(0, "MonkeyMat");
+    app.app_state
+        .scene
+        .assign_material_to_object(0, "MonkeyMat");
     app.app_state.scene.assign_material_to_object(1, "CubeMat");
-    app.app_state.scene.assign_material_to_object(2, "GroundMat");
+    app.app_state
+        .scene
+        .assign_material_to_object(2, "GroundMat");
 
     // Set up custom UI to display shadow cache statistics
     app.set_ui(|ui, scene, _selected_index| {
@@ -45,7 +55,7 @@ fn main() {
             .build(|| {
                 ui.text("Shadow Map Caching System");
                 ui.separator();
-                
+
                 if let Some(_render_engine) = &scene.get_object(0).map(|_| ()) {
                     // In a real implementation, we'd access render_engine through the app
                     // For this demo, we'll show some mock statistics
@@ -53,9 +63,9 @@ fn main() {
                     ui.text("Objects Tracked: 3");
                     ui.text("Objects in Shadow Bounds: 2");
                     ui.text("Last Update: Frame 142");
-                    
+
                     ui.separator();
-                    
+
                     if ui.button("Force Cache Invalidation") {
                         // In a real implementation, this would call:
                         // render_engine.invalidate_shadow_cache();
@@ -64,7 +74,7 @@ fn main() {
                 } else {
                     ui.text("Render engine not available");
                 }
-                
+
                 ui.separator();
                 ui.text("Performance Tips:");
                 ui.text("• Static scenes = cached shadows");

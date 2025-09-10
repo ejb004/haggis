@@ -48,25 +48,29 @@
 //! ## Examples
 //!
 //! The module includes several examples:
-//! - **CPU Examples**: Simple movement, physics simulations
-//! - **GPU Examples**: Particle systems, compute shader simulations
-//!
-//! [`HaggisApp`]: crate::app::HaggisApp
+
+pub mod builders;
+pub use builders::*;
+// - **CPU Examples**: Simple movement, physics simulations
+// - **GPU Examples**: Particle systems, compute shader simulations
+//
+/// [`HaggisApp`]: crate::app::HaggisApp
 
 pub mod base_simulation;
 pub mod cpu;
-pub mod examples;
+// pub mod examples;
 pub mod gpu;
 pub mod manager;
 pub mod traits;
 
 // New API layers
 pub mod high_level;
-pub mod low_level;
-pub mod mid_level;
+// pub mod low_level;
+// pub mod mid_level;
 
 // Re-export for convenience
 pub use base_simulation::BaseSimulation;
-pub use high_level::{Constraint, ForceField, ParticleSimulation, ParticleSystem};
-pub use low_level::{ComputeContext, GpuParticle, RawGpuSimulation};
-pub use mid_level::{GpuResourceManager, ManagedSimulation, SimulationExt};
+pub use builders::ParticleSystemBuilder;
+pub use high_level::{Constraint, ForceField, ParticleSystem};
+// pub use low_level::{ComputeContext, GpuParticle, RawGpuSimulation};
+// pub use mid_level::{GpuResourceManager, ManagedSimulation, SimulationExt};
