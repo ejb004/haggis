@@ -5,7 +5,7 @@
 
 use super::rendering::VisualizationMaterial;
 use super::traits::VisualizationComponent;
-use super::ui::cut_plane_controls::{FilterMode, VisualizationMode};
+use super::ui::cut_plane_controls::{ColoringMode, FilterMode, VisualizationMode};
 use crate::gfx::{resources::texture_resource::TextureResource, scene::Scene};
 use crate::builder::{Builder, CommonConfig, ConfigurableBuilder};
 use cgmath::Vector3;
@@ -51,6 +51,8 @@ pub struct CutPlane2D {
     mode: VisualizationMode,
     filter_mode: FilterMode,
     last_filter_mode: FilterMode, // Track changes
+    coloring_mode: ColoringMode,
+    last_coloring_mode: ColoringMode, // Track changes
 
     // View controls
     zoom: f32,
@@ -82,6 +84,8 @@ impl CutPlane2D {
             mode: VisualizationMode::Heatmap,
             filter_mode: FilterMode::Sharp, // Default to sharp for discrete data like Conway's Game of Life
             last_filter_mode: FilterMode::Sharp,
+            coloring_mode: ColoringMode::Vorticity, // Default to vorticity
+            last_coloring_mode: ColoringMode::Vorticity,
             zoom: 1.0,
             pan: [0.0, 0.0],
             data_source: None,
@@ -94,7 +98,7 @@ impl CutPlane2D {
             needs_filter_update: false,
         }
     }
-    
+
     /// Create with configuration from builder
     pub fn new_with_config(
         data_source: DataSource,
@@ -133,6 +137,8 @@ impl CutPlane2D {
             needs_material_update: true,
             needs_scene_object_update: true,
             needs_filter_update: false,
+            coloring_mode: ColoringMode::Vorticity,
+            last_coloring_mode: ColoringMode::Vorticity,
         }
     }
 
@@ -195,6 +201,14 @@ impl CutPlane2D {
             if matches!(self.data_source, Some(DataSource::CpuData(_))) {
                 self.needs_material_update = true;
             }
+        }
+    }
+
+    /// Set coloring mode (Vorticity vs AirSpeed)
+    pub fn set_coloring_mode(&mut self, coloring_mode: ColoringMode) {
+        if self.coloring_mode != coloring_mode {
+            self.coloring_mode = coloring_mode;
+            self.needs_filter_update = true; // Reuse filter update flag to trigger uniform update
         }
     }
 
@@ -292,17 +306,27 @@ impl CutPlane2D {
 
     /// Apply heatmap coloring to 2D data
     fn apply_heatmap_coloring(&self, data: &[f32]) -> Vec<f32> {
-        // Normalize data and return as-is for VisualizationMaterial to handle
-        let min_val = data.iter().fold(f32::INFINITY, |a, &b| a.min(b));
-        let max_val = data.iter().fold(f32::NEG_INFINITY, |a, &b| a.max(b));
-        let range = max_val - min_val;
-
-        if range > 0.0 {
-            data.iter()
-                .map(|&value| (value - min_val) / range)
-                .collect()
-        } else {
-            vec![0.5; data.len()] // All same value - use middle gray
+        // For vorticity and air speed modes, encode raw values for shader coloring
+        match self.coloring_mode {
+            ColoringMode::Vorticity => {
+                // Encode vorticity values in range [0,1] for texture, preserving sign
+                // Negative values: 0.0 to 0.5, Positive values: 0.5 to 1.0
+                let max_vorticity = 0.1; // Much smaller range for LBM vorticity (match shader)
+                data.iter()
+                    .map(|&value| {
+                        let normalized = value / max_vorticity;
+                        let clamped = normalized.clamp(-1.0, 1.0);
+                        (clamped + 1.0) / 2.0 // Map [-1,1] to [0,1]
+                    })
+                    .collect()
+            },
+            ColoringMode::AirSpeed => {
+                // Encode speed values in range [0,1] for texture
+                let max_speed = 0.15; // Match shader's max_speed
+                data.iter()
+                    .map(|&value| (value / max_speed).clamp(0.0, 1.0))
+                    .collect()
+            },
         }
     }
 
@@ -426,11 +450,12 @@ impl VisualizationComponent for CutPlane2D {
             }
         }
         
-        // Update filter mode for GPU materials (only when changed)
-        if self.needs_filter_update && self.filter_mode != self.last_filter_mode {
+        // Update filter mode and/or coloring mode for GPU materials (only when changed)
+        if self.needs_filter_update && (self.filter_mode != self.last_filter_mode || self.coloring_mode != self.last_coloring_mode) {
             if let (Some(material), Some(queue)) = (&self.material, queue) {
-                material.update_filter_mode(queue, self.filter_mode);
+                material.update_filter_and_coloring_mode(queue, self.filter_mode, self.coloring_mode);
                 self.last_filter_mode = self.filter_mode;
+                self.last_coloring_mode = self.coloring_mode;
                 self.needs_filter_update = false;
             }
         }

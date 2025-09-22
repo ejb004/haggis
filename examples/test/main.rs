@@ -1,5 +1,4 @@
 use haggis::ui::default_transform_panel;
-use haggis::visualization::CutPlane2D;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut haggis = haggis::default();

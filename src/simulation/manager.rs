@@ -108,6 +108,33 @@ impl SimulationManager {
         }
     }
 
+    /// Update only visualization components without heavy simulation compute
+    /// Used in independent compute mode where simulation runs in background thread
+    pub fn update_visualizations_only(
+        &mut self,
+        delta_time: f32,
+        scene: &mut Scene,
+        device: Option<&Device>,
+        queue: Option<&Queue>,
+    ) {
+        if self.is_paused {
+            return;
+        }
+
+        if let Some(simulation) = &mut self.simulation {
+            // Only run lightweight scene updates (no heavy compute)
+            simulation.update(delta_time, scene);
+
+            // Run visualization updates only (skip heavy GPU compute)
+            if let (Some(device), Some(queue)) = (device, queue) {
+                // Call update_gpu but simulation should handle skipping heavy compute
+                // This allows visualization updates like cut plane refreshes
+                simulation.update_gpu(device, queue, delta_time);
+                // Note: apply_gpu_results_to_scene is skipped since no new compute results
+            }
+        }
+    }
+
     /// Render simulation UI controls
     pub fn render_ui(&mut self, ui: &Ui, scene: &mut Scene) {
         let display_size = ui.io().display_size;

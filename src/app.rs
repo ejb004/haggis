@@ -45,7 +45,8 @@
 //! ```
 
 use cgmath::Vector3;
-use std::sync::Arc;
+use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+use std::thread::{self, JoinHandle};
 use winit::{
     application::ApplicationHandler,
     dpi::PhysicalSize,
@@ -69,6 +70,15 @@ use crate::{
     ui::{manager::UiManager, panel::default_transform_panel, UiFont, UiStyle},
     visualization::{manager::VisualizationManager, traits::VisualizationComponent},
 };
+
+/// Compute execution mode for simulations
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ComputeMode {
+    /// Coupled mode: Simulation updates tied to rendering framerate (default)
+    Coupled,
+    /// Independent mode: Simulation runs in background thread at configurable rate
+    Independent { compute_fps: f32 },
+}
 
 /// UI callback function signature for custom user interface rendering.
 ///
@@ -192,6 +202,12 @@ pub struct AppState {
     last_frame_time: std::time::Instant,
     /// Frame timing for performance monitoring (tracks actual frame cycle)
     last_performance_frame_time: std::time::Instant,
+    /// Compute execution mode
+    pub compute_mode: ComputeMode,
+    /// Compute thread handle for independent mode
+    compute_thread_handle: Option<std::thread::JoinHandle<()>>,
+    /// Signal to stop compute thread
+    compute_stop_signal: std::sync::Arc<std::sync::atomic::AtomicBool>,
     /// Object picker for mouse selection
     pub object_picker: ObjectPicker,
     /// Current mouse position for picking
@@ -252,6 +268,9 @@ impl HaggisApp {
                 framerate_limit: Some(144.0), // Higher limit to ensure we hit 120fps target
                 last_frame_time: std::time::Instant::now(),
                 last_performance_frame_time: std::time::Instant::now(),
+                compute_mode: ComputeMode::Coupled, // Default to coupled mode
+                compute_thread_handle: None,
+                compute_stop_signal: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
                 object_picker: ObjectPicker::new(),
                 mouse_position: (0.0, 0.0),
                 ui_wants_input: false,
@@ -631,7 +650,7 @@ impl HaggisApp {
     ///
     /// Limits the maximum framerate to free up resources for simulation computation.
     /// Use None for unlimited framerate, or Some(fps) to set a specific limit.
-    /// 
+    ///
     /// # Arguments
     /// * `limit` - Framerate limit in FPS (None for unlimited)
     ///
@@ -643,6 +662,69 @@ impl HaggisApp {
     /// ```
     pub fn set_framerate_limit(&mut self, limit: Option<f32>) {
         self.app_state.framerate_limit = limit;
+    }
+
+    /// Set compute execution mode for simulations.
+    ///
+    /// Controls whether simulation updates are tied to rendering framerate (Coupled)
+    /// or run independently in a background thread (Independent).
+    ///
+    /// # Arguments
+    /// * `mode` - Compute execution mode
+    ///
+    /// # Examples
+    /// ```rust
+    /// use haggis::ComputeMode;
+    /// let mut app = haggis::default();
+    /// app.set_compute_mode(ComputeMode::Coupled); // Default: tied to rendering
+    /// app.set_compute_mode(ComputeMode::Independent { compute_fps: 60.0 }); // 60fps background compute
+    /// ```
+    pub fn set_compute_mode(&mut self, mode: ComputeMode) {
+        // Stop existing compute thread if switching modes
+        if let Some(handle) = self.app_state.compute_thread_handle.take() {
+            self.app_state.compute_stop_signal.store(true, Ordering::Relaxed);
+            let _ = handle.join(); // Wait for thread to finish
+            self.app_state.compute_stop_signal.store(false, Ordering::Relaxed);
+        }
+
+        self.app_state.compute_mode = mode;
+
+        // Start background compute thread for independent mode
+        if let ComputeMode::Independent { compute_fps } = mode {
+            self.spawn_compute_thread(compute_fps);
+        }
+    }
+
+    /// Spawn a background compute thread for independent compute mode
+    fn spawn_compute_thread(&mut self, compute_fps: f32) {
+        let stop_signal = Arc::clone(&self.app_state.compute_stop_signal);
+        let compute_interval = std::time::Duration::from_secs_f32(1.0 / compute_fps);
+
+        let handle = thread::spawn(move || {
+            println!("Background compute thread started at {}fps", compute_fps);
+
+            loop {
+                if stop_signal.load(Ordering::Relaxed) {
+                    println!("Background compute thread stopping");
+                    break;
+                }
+
+                // TODO: Implement thread-safe simulation compute
+                // This requires major refactoring of the simulation system to separate
+                // compute logic from GPU resource management. For now, this thread
+                // serves as a placeholder for the independent compute architecture.
+                //
+                // Future implementation should:
+                // 1. Extract compute logic from simulations into thread-safe components
+                // 2. Use message passing or shared memory for data exchange
+                // 3. Coordinate GPU resource updates on the main thread
+                // 4. Handle timing and synchronization between compute and render threads
+
+                thread::sleep(compute_interval);
+            }
+        });
+
+        self.app_state.compute_thread_handle = Some(handle);
     }
 
     /// Set VSync (vertical synchronization) state.
@@ -1207,13 +1289,28 @@ impl ApplicationHandler for AppState {
                 // Calculate actual delta time for simulation
                 let delta_time = 1.0 / 120.0; // Fixed timestep for stability
 
-                // Update simulation before scene update
-                self.simulation_manager.update(
-                    delta_time,
-                    &mut self.scene,
-                    Some(render_engine.device()),
-                    Some(render_engine.queue()),
-                );
+                // Update simulation based on compute mode
+                match self.compute_mode {
+                    ComputeMode::Coupled => {
+                        // Traditional coupled mode - run simulation in redraw event
+                        self.simulation_manager.update(
+                            delta_time,
+                            &mut self.scene,
+                            Some(render_engine.device()),
+                            Some(render_engine.queue()),
+                        );
+                    },
+                    ComputeMode::Independent { .. } => {
+                        // Independent mode - run lightweight updates for visualization only
+                        // Skip heavy compute but still update visualizations
+                        self.simulation_manager.update_visualizations_only(
+                            delta_time,
+                            &mut self.scene,
+                            Some(render_engine.device()),
+                            Some(render_engine.queue()),
+                        );
+                    }
+                }
 
                 // Update visualizations (no longer creates scene objects)
                 self.visualization_manager.update(

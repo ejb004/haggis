@@ -47,6 +47,13 @@ pub enum VisualizationMode {
     Heatmap,
 }
 
+/// Coloring mode for data visualization
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ColoringMode {
+    Vorticity, // Red = counter-clockwise, Green = clockwise
+    AirSpeed,  // Blue = slow, Red = fast
+}
+
 /// Texture filtering mode for the cut plane
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum FilterMode {

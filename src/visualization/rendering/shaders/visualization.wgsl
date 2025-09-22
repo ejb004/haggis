@@ -48,12 +48,12 @@ var s_diffuse: sampler;
 @group(1) @binding(3)
 var<storage, read> gpu_data_buffer: array<u32>;
 
-// Filter mode uniform (0 = sharp, 1 = smooth)
+// Filter mode and coloring mode uniforms
 struct FilterUniforms {
-    filter_mode: u32,  // 0 = nearest/sharp, 1 = linear/smooth
+    filter_mode: u32,   // 0 = nearest/sharp, 1 = linear/smooth
+    coloring_mode: u32, // 0 = vorticity, 1 = air_speed
     grid_width: u32,
     grid_height: u32,
-    _padding: u32,
 };
 
 @group(1) @binding(4)
@@ -64,9 +64,9 @@ var<uniform> filter_uniforms: FilterUniforms;
 // Negative vorticity (clockwise) = Green
 // Zero vorticity = Black
 fn vorticity_to_color(vorticity: f32) -> vec4<f32> {
-    let max_vorticity = 5.0; // Adjusted for airfoil vorticity range
+    let max_vorticity = 0.1; // Much smaller range for LBM vorticity
     let normalized = clamp(abs(vorticity) / max_vorticity, 0.0, 1.0);
-    
+
     if (vorticity > 0.0) {
         // Positive vorticity: Red channel
         return vec4<f32>(normalized, 0.0, 0.0, 1.0);
@@ -77,6 +77,22 @@ fn vorticity_to_color(vorticity: f32) -> vec4<f32> {
         // Zero vorticity: Black
         return vec4<f32>(0.0, 0.0, 0.0, 1.0);
     }
+}
+
+// Convert velocity magnitude to speed color
+// Low speed = Blue, High speed = Red
+// Smooth gradient through spectrum
+fn velocity_to_color(speed: f32) -> vec4<f32> {
+    let max_speed = 0.15; // Adjusted for LBM velocity range
+    let normalized = clamp(speed / max_speed, 0.0, 1.0);
+
+    // Blue to red color mapping for speed visualization
+    // Blue (0,0,1) -> Cyan (0,1,1) -> Green (0,1,0) -> Yellow (1,1,0) -> Red (1,0,0)
+    let r = clamp(2.0 * normalized - 0.5, 0.0, 1.0);
+    let g = clamp(2.0 * (1.0 - abs(normalized - 0.5)), 0.0, 1.0);
+    let b = clamp(1.5 - 2.0 * normalized, 0.0, 1.0);
+
+    return vec4<f32>(r, g, b, 1.0);
 }
 
 // Fragment shader with dual mode support
@@ -98,8 +114,16 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
             
             if (index < arrayLength(&gpu_data_buffer)) {
                 let cell_value = gpu_data_buffer[index];
-                let vorticity = f32(cell_value);
-                return vorticity_to_color(vorticity);
+                let value = f32(cell_value);
+
+                // Apply coloring based on mode
+                if (filter_uniforms.coloring_mode == 0u) {
+                    // Vorticity mode
+                    return vorticity_to_color(value);
+                } else {
+                    // Air speed mode
+                    return velocity_to_color(value);
+                }
             } else {
                 return vec4<f32>(0.0, 0.0, 0.0, 1.0);
             }
@@ -130,12 +154,35 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
             // Bilinear interpolation
             let top = mix(val_00, val_01, fx);
             let bottom = mix(val_10, val_11, fx);
-            let vorticity = mix(top, bottom, fy);
-            
-            return vorticity_to_color(vorticity);
+            let value = mix(top, bottom, fy);
+
+            // Apply coloring based on mode
+            if (filter_uniforms.coloring_mode == 0u) {
+                // Vorticity mode
+                return vorticity_to_color(value);
+            } else {
+                // Air speed mode
+                return velocity_to_color(value);
+            }
         }
     } else {
-        // Texture-based rendering (CPU data path)
-        return textureSample(t_diffuse, s_diffuse, input.tex_coords);
+        // Texture-based rendering (CPU data path) with coloring support
+        let raw_value = textureSample(t_diffuse, s_diffuse, input.tex_coords);
+
+        // Use the red channel as the encoded data value
+        let encoded_value = raw_value.r;
+
+        // Apply coloring based on mode
+        if (filter_uniforms.coloring_mode == 0u) {
+            // Vorticity mode - decode from [0,1] back to [-max,max]
+            let max_vorticity = 0.1; // Much smaller range for LBM vorticity
+            let decoded_vorticity = (encoded_value * 2.0 - 1.0) * max_vorticity;
+            return vorticity_to_color(decoded_vorticity);
+        } else {
+            // Air speed mode - decode from [0,1] back to [0,max]
+            let max_speed = 0.15;
+            let decoded_speed = encoded_value * max_speed;
+            return velocity_to_color(decoded_speed);
+        }
     }
 }

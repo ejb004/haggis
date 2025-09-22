@@ -3,7 +3,11 @@
     "allow": [
       "Bash(cargo check:*)",
       "Bash(cargo run:*)",
-      "Bash(timeout:*)"
+      "Bash(timeout:*)",
+      "Bash(cargo build:*)",
+      "Bash(RUST_LOG=info cargo run --example lbm_fluid_3d_texture)",
+      "Bash(find:*)",
+      "Bash(gtimeout 30s cargo run --example lbm_fluid_3d_texture)"
     ],
     "deny": [],
     "ask": []

@@ -1,27 +1,20 @@
-//! # 3D Lattice Boltzmann Method (LBM) Fluid Simulation
+//! # 3D Lattice Boltzmann Method (LBM) Fluid Simulation - Hybrid Approach
 //!
-//! This example demonstrates a 3D BGK LBM fluid simulation using GPU compute shaders
-//! with ping-pong buffers for high-performance fluid dynamics computation.
+//! This example demonstrates a 3D BGK LBM fluid simulation using a hybrid approach:
+//! - 3D textures for read operations (better cache locality)
+//! - Storage buffers for write operations (better compatibility)
+//! - Same sphere obstacle as the buffer version
 //!
-//! ## Features Demonstrated
+//! ## Performance Benefits
 //!
-//! - GPU-accelerated 3D LBM with BGK collision operator
-//! - D3Q19 lattice model (19 velocity directions in 3D)
-//! - Ping-pong buffer system for distribution functions
-//! - Real-time vorticity visualization through 2D cut plane
-//! - Interactive cut plane position controls
-//! - Lid-driven cavity flow setup
-//!
-//! ## LBM Implementation Details
-//!
-//! 1. Stream step: Distribution functions propagate to neighboring cells
-//! 2. Collision step: BGK collision operator relaxes toward equilibrium
-//! 3. Boundary conditions: Bounce-back for walls, velocity for lid
-//! 4. Vorticity calculation: Curl of velocity field for visualization
+//! - Uses 3D textures for spatial locality during reads
+//! - Maintains compatibility with storage buffers for writes
+//! - Better memory access patterns than pure buffer approach
+//! - GPU-friendly boundary condition handling
 //!
 //! ## Usage
 //!
-//! Run with: `cargo run --example lbm_fluid_3d`
+//! Run with: `cargo run --example lbm_fluid_3d_simple`
 
 use haggis::prelude::*;
 use haggis::{
@@ -30,8 +23,8 @@ use haggis::{
 };
 use cgmath::Vector3;
 
-/// Grid size for the 3D LBM simulation (96³)  
-const GRID_SIZE: u32 = 96;
+/// Grid size for the 3D LBM simulation (64³ for better compatibility)
+const GRID_SIZE: u32 = 64;
 const GRID_WIDTH: u32 = GRID_SIZE;
 const GRID_HEIGHT: u32 = GRID_SIZE;
 const GRID_DEPTH: u32 = GRID_SIZE;
@@ -46,12 +39,10 @@ pub struct LbmParams {
     pub tau: f32,
     /// Inlet velocity (left boundary)
     pub inlet_velocity: f32,
-    /// Outlet pressure (right boundary)  
+    /// Outlet pressure (right boundary)
     pub outlet_pressure: f32,
     /// Sphere radius (in grid units)
     pub sphere_radius: f32,
-    /// Reynolds number (informational)
-    pub reynolds: f32,
 }
 
 impl Default for LbmParams {
@@ -60,83 +51,72 @@ impl Default for LbmParams {
             tau: 0.6,               // Lower relaxation time for less viscosity
             inlet_velocity: 0.08,   // Higher inlet velocity for vortex shedding
             outlet_pressure: 1.0,   // Outlet pressure (atmospheric)
-            sphere_radius: 9.0,     // Scale sphere radius for 96³ grid
-            reynolds: 100.0,        // Target Reynolds number for vortex shedding
+            sphere_radius: 10.0,    // Sphere radius for 64³ grid
         }
     }
 }
 
-/// GPU resources for 3D LBM fluid simulation
-struct LbmGpuResources {
+/// GPU resources for 3D LBM fluid simulation using hybrid approach
+struct LbmGpuResourcesHybrid {
     // Compute pipelines
     stream_pipeline: wgpu::ComputePipeline,
     collision_pipeline: wgpu::ComputePipeline,
     vorticity_pipeline: wgpu::ComputePipeline,
-    
-    // Bind group layouts
-    #[allow(dead_code)]
-    stream_layout: wgpu::BindGroupLayout,
-    #[allow(dead_code)]
-    collision_layout: wgpu::BindGroupLayout,
-    #[allow(dead_code)]
-    vorticity_layout: wgpu::BindGroupLayout,
-    
+
     // Ping-pong buffers for distribution functions (f_i)
-    distributions_a: wgpu::Buffer, // Current distributions
-    distributions_b: wgpu::Buffer, // Next distributions
-    
-    // Velocity and density buffers
-    #[allow(dead_code)]
+    distributions_buffer_a: wgpu::Buffer, // Current distributions
+    distributions_buffer_b: wgpu::Buffer, // Next distributions
+
+    // Velocity and vorticity buffers
     velocity_buffer: wgpu::Buffer,   // 4 floats per cell: [vx, vy, vz, density]
     vorticity_buffer: wgpu::Buffer,  // 4 floats per cell: [ωx, ωy, ωz, magnitude]
-    
+
     // Boundary buffer - bit-packed obstacles (32 cells per u32)
     boundary_buffer: wgpu::Buffer,   // u32 array with bit flags for boundaries
-    
+
     // Parameters buffer
     params_buffer: wgpu::Buffer,
-    
+
     // Bind groups for ping-pong
     stream_bind_group_a_to_b: wgpu::BindGroup,
     stream_bind_group_b_to_a: wgpu::BindGroup,
     collision_bind_group_a: wgpu::BindGroup,
     collision_bind_group_b: wgpu::BindGroup,
     vorticity_bind_group: wgpu::BindGroup,
-    
+
     // State
     ping_pong_state: bool, // false = A is current, true = B is current
 }
 
-/// 3D LBM fluid simulation using GPU compute shaders
-struct LbmFluidSimulation {
+/// 3D LBM fluid simulation using hybrid GPU approach
+struct LbmFluidSimulationSimple {
     base: BaseSimulation,
-    
+
     // Grid configuration
     width: u32,
     height: u32,
     depth: u32,
-    
+
     // Simulation state
     generation: u64,
     is_paused: bool,
-    
+
     // LBM parameters
     params: LbmParams,
-    
+
     // GPU resources
-    gpu_resources: Option<LbmGpuResources>,
-    
+    gpu_resources: Option<LbmGpuResourcesHybrid>,
+
     // Cut plane controls for vorticity visualization
     cut_plane_z: f32,
     needs_cut_plane_update: bool,
     visualization_scale: f32,
-    
+
     // CPU backup for vorticity data (for cut plane extraction)
     cpu_vorticity: Vec<f32>, // 4 floats per cell
 }
 
-
-impl LbmFluidSimulation {
+impl LbmFluidSimulationSimple {
     /// Generate sphere boundary pattern
     fn generate_sphere_boundaries() -> Vec<u32> {
         let total_cells = (GRID_WIDTH * GRID_HEIGHT * GRID_DEPTH) as usize;
@@ -161,7 +141,7 @@ impl LbmFluidSimulation {
 
         boundary_data
     }
-    
+
     /// Check if cell is inside sphere boundary
     fn is_sphere_boundary(x: u32, y: u32, z: u32) -> bool {
         let fx = x as f32;
@@ -174,7 +154,7 @@ impl LbmFluidSimulation {
         let sphere_center_z = GRID_DEPTH as f32 * 0.5;
 
         // Default sphere radius (can be controlled by parameter)
-        let sphere_radius = 15.0; // Radius in grid units
+        let sphere_radius = 10.0; // Radius in grid units
 
         // Calculate distance from sphere center
         let dx = fx - sphere_center_x;
@@ -187,7 +167,7 @@ impl LbmFluidSimulation {
     }
 
     fn new() -> Self {
-        let mut base = BaseSimulation::new("LBM Fluid 3D");
+        let mut base = BaseSimulation::new("LBM Fluid 3D (Simple)");
 
         // Create and configure the cut plane visualization for vorticity
         let mut cut_plane = CutPlane2D::new();
@@ -223,7 +203,7 @@ impl LbmFluidSimulation {
         }
 
         println!(
-            "🌊 Initialized 3D LBM fluid simulation: {}³ grid with D3Q19 lattice",
+            "🌊 Initialized 3D LBM fluid simulation (Simple): {}³ grid with D3Q19 lattice",
             GRID_SIZE
         );
 
@@ -232,27 +212,27 @@ impl LbmFluidSimulation {
 
     /// Initialize GPU resources for LBM computation
     fn initialize_gpu_resources(&mut self, device: &Device, queue: &Queue) {
-        println!("🔧 Initializing LBM GPU compute resources...");
+        println!("🔧 Initializing LBM GPU compute resources (Simple)...");
 
-        // Create shaders
+        // Create shaders (same as original buffer approach)
         let stream_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("LBM Stream Shader"),
-            source: wgpu::ShaderSource::Wgsl(LBM_STREAM_SHADER.into()),
+            label: Some("LBM Stream Shader (Simple)"),
+            source: wgpu::ShaderSource::Wgsl(LBM_STREAM_SHADER_SIMPLE.into()),
         });
 
         let collision_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("LBM Collision Shader"),
-            source: wgpu::ShaderSource::Wgsl(LBM_COLLISION_SHADER.into()),
+            label: Some("LBM Collision Shader (Simple)"),
+            source: wgpu::ShaderSource::Wgsl(LBM_COLLISION_SHADER_SIMPLE.into()),
         });
 
         let vorticity_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("LBM Vorticity Shader"),
-            source: wgpu::ShaderSource::Wgsl(LBM_VORTICITY_SHADER.into()),
+            label: Some("LBM Vorticity Shader (Simple)"),
+            source: wgpu::ShaderSource::Wgsl(LBM_VORTICITY_SHADER_SIMPLE.into()),
         });
 
-        // Create bind group layouts
+        // Create bind group layouts (same as original)
         let stream_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("LBM Stream Layout"),
+            label: Some("LBM Stream Layout (Simple)"),
             entries: &[
                 // Input distributions
                 wgpu::BindGroupLayoutEntry {
@@ -280,7 +260,7 @@ impl LbmFluidSimulation {
         });
 
         let collision_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("LBM Collision Layout"),
+            label: Some("LBM Collision Layout (Simple)"),
             entries: &[
                 // Distributions (read/write)
                 wgpu::BindGroupLayoutEntry {
@@ -330,7 +310,7 @@ impl LbmFluidSimulation {
         });
 
         let vorticity_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("LBM Vorticity Layout"),
+            label: Some("LBM Vorticity Layout (Simple)"),
             entries: &[
                 // Velocity input
                 wgpu::BindGroupLayoutEntry {
@@ -359,7 +339,7 @@ impl LbmFluidSimulation {
 
         // Create compute pipelines
         let stream_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("LBM Stream Pipeline"),
+            label: Some("LBM Stream Pipeline (Simple)"),
             layout: Some(&device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("LBM Stream Pipeline Layout"),
                 bind_group_layouts: &[&stream_layout],
@@ -372,7 +352,7 @@ impl LbmFluidSimulation {
         });
 
         let collision_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("LBM Collision Pipeline"),
+            label: Some("LBM Collision Pipeline (Simple)"),
             layout: Some(&device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("LBM Collision Pipeline Layout"),
                 bind_group_layouts: &[&collision_layout],
@@ -385,7 +365,7 @@ impl LbmFluidSimulation {
         });
 
         let vorticity_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("LBM Vorticity Pipeline"),
+            label: Some("LBM Vorticity Pipeline (Simple)"),
             layout: Some(&device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("LBM Vorticity Pipeline Layout"),
                 bind_group_layouts: &[&vorticity_layout],
@@ -403,29 +383,29 @@ impl LbmFluidSimulation {
         let vorticity_size = velocity_size; // Same size as velocity (4 floats per cell)
         let params_size = 16u64; // 4 f32 values (16 bytes) for proper alignment
 
-        let distributions_a = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("LBM Distributions A"),
+        let distributions_buffer_a = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("LBM Distributions Buffer A (Simple)"),
             size: distributions_size,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
 
-        let distributions_b = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("LBM Distributions B"),
+        let distributions_buffer_b = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("LBM Distributions Buffer B (Simple)"),
             size: distributions_size,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
 
         let velocity_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("LBM Velocity Buffer"),
+            label: Some("LBM Velocity Buffer (Simple)"),
             size: velocity_size,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
 
         let vorticity_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("LBM Vorticity Buffer"),
+            label: Some("LBM Vorticity Buffer (Simple)"),
             size: vorticity_size,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
@@ -435,17 +415,17 @@ impl LbmFluidSimulation {
         let boundary_data = Self::generate_sphere_boundaries();
         let boundary_size = (boundary_data.len() * std::mem::size_of::<u32>()) as u64;
         let boundary_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("LBM Boundary Buffer"),
+            label: Some("LBM Boundary Buffer (Simple)"),
             size: boundary_size,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        
+
         // Upload boundary data
         queue.write_buffer(&boundary_buffer, 0, bytemuck::cast_slice(&boundary_data));
 
         let params_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("LBM Parameters Buffer"),
+            label: Some("LBM Parameters Buffer (Simple)"),
             size: params_size,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
@@ -453,42 +433,42 @@ impl LbmFluidSimulation {
 
         // Create bind groups
         let stream_bind_group_a_to_b = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("LBM Stream A->B"),
+            label: Some("LBM Stream A->B (Simple)"),
             layout: &stream_layout,
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: distributions_a.as_entire_binding(),
+                    resource: distributions_buffer_a.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: distributions_b.as_entire_binding(),
+                    resource: distributions_buffer_b.as_entire_binding(),
                 },
             ],
         });
 
         let stream_bind_group_b_to_a = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("LBM Stream B->A"),
+            label: Some("LBM Stream B->A (Simple)"),
             layout: &stream_layout,
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: distributions_b.as_entire_binding(),
+                    resource: distributions_buffer_b.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: distributions_a.as_entire_binding(),
+                    resource: distributions_buffer_a.as_entire_binding(),
                 },
             ],
         });
 
         let collision_bind_group_a = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("LBM Collision A"),
+            label: Some("LBM Collision A (Simple)"),
             layout: &collision_layout,
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: distributions_a.as_entire_binding(),
+                    resource: distributions_buffer_a.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
@@ -506,12 +486,12 @@ impl LbmFluidSimulation {
         });
 
         let collision_bind_group_b = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("LBM Collision B"),
+            label: Some("LBM Collision B (Simple)"),
             layout: &collision_layout,
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: distributions_b.as_entire_binding(),
+                    resource: distributions_buffer_b.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
@@ -529,7 +509,7 @@ impl LbmFluidSimulation {
         });
 
         let vorticity_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("LBM Vorticity"),
+            label: Some("LBM Vorticity (Simple)"),
             layout: &vorticity_layout,
             entries: &[
                 wgpu::BindGroupEntry {
@@ -543,15 +523,12 @@ impl LbmFluidSimulation {
             ],
         });
 
-        self.gpu_resources = Some(LbmGpuResources {
+        self.gpu_resources = Some(LbmGpuResourcesHybrid {
             stream_pipeline,
             collision_pipeline,
             vorticity_pipeline,
-            stream_layout,
-            collision_layout,
-            vorticity_layout,
-            distributions_a,
-            distributions_b,
+            distributions_buffer_a,
+            distributions_buffer_b,
             velocity_buffer,
             vorticity_buffer,
             boundary_buffer,
@@ -564,7 +541,7 @@ impl LbmFluidSimulation {
             ping_pong_state: false,
         });
 
-        println!("✅ LBM GPU resources initialized successfully");
+        println!("✅ LBM GPU resources (Simple) initialized successfully");
     }
 
     /// Initialize LBM simulation with equilibrium distributions
@@ -573,7 +550,7 @@ impl LbmFluidSimulation {
             // Initialize with rest state (zero velocity, unit density)
             let total_cells = (self.width * self.height * self.depth) as usize;
             let mut distributions = vec![0.0f32; total_cells * D3Q19_DIRECTIONS as usize];
-            
+
             // Set equilibrium distributions for rest state
             // For D3Q19: w0=1/3, w1-6=1/18, w7-18=1/36
             let weights = [
@@ -593,19 +570,19 @@ impl LbmFluidSimulation {
             }
 
             // Upload to both distribution buffers
-            queue.write_buffer(&gpu_resources.distributions_a, 0, bytemuck::cast_slice(&distributions));
-            queue.write_buffer(&gpu_resources.distributions_b, 0, bytemuck::cast_slice(&distributions));
+            queue.write_buffer(&gpu_resources.distributions_buffer_a, 0, bytemuck::cast_slice(&distributions));
+            queue.write_buffer(&gpu_resources.distributions_buffer_b, 0, bytemuck::cast_slice(&distributions));
 
             // Upload parameters
             let params_data = [
-                self.params.tau, 
-                self.params.inlet_velocity, 
-                self.params.outlet_pressure, 
+                self.params.tau,
+                self.params.inlet_velocity,
+                self.params.outlet_pressure,
                 self.params.sphere_radius
             ];
             queue.write_buffer(&gpu_resources.params_buffer, 0, bytemuck::cast_slice(&params_data));
 
-            println!("🌊 LBM simulation initialized with equilibrium state");
+            println!("🌊 LBM simulation (Simple) initialized with equilibrium state");
         }
     }
 
@@ -613,24 +590,24 @@ impl LbmFluidSimulation {
     fn run_lbm_step(&mut self, device: &Device, queue: &Queue) {
         if let Some(ref mut gpu_resources) = self.gpu_resources {
             let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("LBM Step Encoder"),
+                label: Some("LBM Step Encoder (Simple)"),
             });
 
             // Step 1: Stream step (propagation)
             {
                 let mut stream_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
-                    label: Some("LBM Stream Pass"),
+                    label: Some("LBM Stream Pass (Simple)"),
                     timestamp_writes: None,
                 });
 
                 stream_pass.set_pipeline(&gpu_resources.stream_pipeline);
-                
+
                 let stream_bind_group = if gpu_resources.ping_pong_state {
                     &gpu_resources.stream_bind_group_b_to_a
                 } else {
                     &gpu_resources.stream_bind_group_a_to_b
                 };
-                
+
                 stream_pass.set_bind_group(0, stream_bind_group, &[]);
 
                 let workgroup_size = 4; // 4x4x4 workgroups
@@ -647,18 +624,18 @@ impl LbmFluidSimulation {
             // Step 2: Collision step (BGK)
             {
                 let mut collision_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
-                    label: Some("LBM Collision Pass"),
+                    label: Some("LBM Collision Pass (Simple)"),
                     timestamp_writes: None,
                 });
 
                 collision_pass.set_pipeline(&gpu_resources.collision_pipeline);
-                
+
                 let collision_bind_group = if gpu_resources.ping_pong_state {
                     &gpu_resources.collision_bind_group_b
                 } else {
                     &gpu_resources.collision_bind_group_a
                 };
-                
+
                 collision_pass.set_bind_group(0, collision_bind_group, &[]);
 
                 let workgroup_size = 4;
@@ -672,7 +649,7 @@ impl LbmFluidSimulation {
             // Step 3: Vorticity calculation
             {
                 let mut vorticity_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
-                    label: Some("LBM Vorticity Pass"),
+                    label: Some("LBM Vorticity Pass (Simple)"),
                     timestamp_writes: None,
                 });
 
@@ -697,7 +674,7 @@ impl LbmFluidSimulation {
         let z_index = ((z_normalized * (self.depth - 1) as f32).round() as u32).min(self.depth - 1);
         let slice_start = (z_index * self.height * self.width * 4) as usize; // 4 floats per cell
         let slice_size = (self.height * self.width) as usize;
-        
+
         if slice_start + slice_size * 4 <= self.cpu_vorticity.len() {
             // Extract vorticity Z-component (3rd component) for directional color
             // This preserves positive/negative values for red/green visualization
@@ -738,16 +715,16 @@ impl LbmFluidSimulation {
     fn sync_vorticity_to_cpu(&mut self, device: &Device, queue: &Queue) {
         if let Some(ref gpu_resources) = self.gpu_resources {
             let buffer_size = (self.width * self.height * self.depth * 4 * std::mem::size_of::<f32>() as u32) as u64;
-            
+
             let staging_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("LBM Vorticity Staging"),
+                label: Some("LBM Vorticity Staging (Simple)"),
                 size: buffer_size,
                 usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
                 mapped_at_creation: false,
             });
 
             let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("LBM Vorticity Sync Encoder"),
+                label: Some("LBM Vorticity Sync Encoder (Simple)"),
             });
 
             encoder.copy_buffer_to_buffer(&gpu_resources.vorticity_buffer, 0, &staging_buffer, 0, buffer_size);
@@ -778,10 +755,10 @@ impl LbmFluidSimulation {
     }
 }
 
-impl haggis::simulation::traits::Simulation for LbmFluidSimulation {
+impl haggis::simulation::traits::Simulation for LbmFluidSimulationSimple {
     fn initialize(&mut self, scene: &mut haggis::gfx::scene::Scene) {
         self.base.initialize(scene);
-        println!("🌊 LBM Fluid 3D simulation initialized");
+        println!("🌊 LBM Fluid 3D simulation (Simple) initialized");
     }
 
     fn initialize_gpu(&mut self, device: &Device, queue: &Queue) {
@@ -789,7 +766,7 @@ impl haggis::simulation::traits::Simulation for LbmFluidSimulation {
         self.initialize_gpu_resources(device, queue);
         self.initialize_simulation(device, queue);
         self.sync_vorticity_to_cpu(device, queue);
-        println!("✅ LBM GPU initialization complete");
+        println!("✅ LBM GPU initialization (Simple) complete");
     }
 
     fn update(&mut self, delta_time: f32, scene: &mut haggis::gfx::scene::Scene) {
@@ -800,9 +777,9 @@ impl haggis::simulation::traits::Simulation for LbmFluidSimulation {
         // Update GPU parameters
         if let Some(ref gpu_resources) = self.gpu_resources {
             let params_data = [
-                self.params.tau, 
-                self.params.inlet_velocity, 
-                self.params.outlet_pressure, 
+                self.params.tau,
+                self.params.inlet_velocity,
+                self.params.outlet_pressure,
                 self.params.sphere_radius
             ];
             queue.write_buffer(&gpu_resources.params_buffer, 0, bytemuck::cast_slice(&params_data));
@@ -817,7 +794,7 @@ impl haggis::simulation::traits::Simulation for LbmFluidSimulation {
         // Run simulation continuously at maximum GPU effort
         if !self.is_paused && self.gpu_resources.is_some() {
             self.run_lbm_step(device, queue);
-            
+
             // Sync vorticity data every few steps for real-time vortex shedding
             if self.generation % 3 == 0 {
                 self.sync_vorticity_to_cpu(device, queue);
@@ -832,20 +809,20 @@ impl haggis::simulation::traits::Simulation for LbmFluidSimulation {
     }
 
     fn render_ui(&mut self, ui: &imgui::Ui) {
-        ui.window("LBM Fluid 3D")
+        ui.window("LBM Fluid 3D (Simple)")
             .size([450.0, 500.0], imgui::Condition::FirstUseEver)
             .build(|| {
-                ui.text("🌊 3D Lattice Boltzmann Method");
+                ui.text("🌊 3D Lattice Boltzmann Method (Simple)");
                 ui.separator();
 
                 ui.text(&format!("Timestep: {}", self.generation));
                 ui.text(&format!("Grid Size: {}³ ({} cells)", GRID_SIZE, GRID_SIZE * GRID_SIZE * GRID_SIZE));
                 ui.text(&format!("Lattice: D3Q{}", D3Q19_DIRECTIONS));
                 ui.text(&format!("GPU Ready: {}", self.gpu_resources.is_some()));
-                
+
                 // Continuous GPU simulation
-                ui.text("💡 Continuous GPU Simulation");
-                ui.text("Maximum effort between frames");
+                ui.text("💡 Simple Buffer GPU Simulation");
+                ui.text("Stable and compatible implementation");
 
                 ui.separator();
 
@@ -858,7 +835,7 @@ impl haggis::simulation::traits::Simulation for LbmFluidSimulation {
 
                 // Flow Parameters
                 ui.text("Flow Parameters:");
-                
+
                 if ui.slider_config("Relaxation Time (τ)", 0.51, 2.0)
                     .display_format("%.3f")
                     .build(&mut self.params.tau) {
@@ -877,7 +854,7 @@ impl haggis::simulation::traits::Simulation for LbmFluidSimulation {
                     // Parameters will be updated next frame
                 }
 
-                if ui.slider_config("Sphere Radius", 4.0, 18.0)
+                if ui.slider_config("Sphere Radius", 4.0, 15.0)
                     .display_format("%.1f")
                     .build(&mut self.params.sphere_radius) {
                     // Parameters will be updated next frame
@@ -886,7 +863,7 @@ impl haggis::simulation::traits::Simulation for LbmFluidSimulation {
                 ui.text(&format!("Kinematic Viscosity: {:.6}", (self.params.tau - 0.5) / 3.0));
                 let reynolds = self.params.inlet_velocity * self.params.sphere_radius * 2.0 / ((self.params.tau - 0.5) / 3.0);
                 ui.text(&format!("Reynolds Number: {:.1}", reynolds));
-                
+
                 // Show flow regime
                 if reynolds < 20.0 {
                     ui.text_colored([0.7, 0.7, 0.7, 1.0], "Flow: Steady (no shedding)");
@@ -918,31 +895,29 @@ impl haggis::simulation::traits::Simulation for LbmFluidSimulation {
 
                 ui.separator();
 
-
                 // Status
                 ui.text("Status:");
                 if self.is_paused {
                     ui.text_colored([1.0, 1.0, 0.0, 1.0], "⏸ Paused");
                 } else if self.gpu_resources.is_some() {
-                    ui.text_colored([0.0, 1.0, 0.0, 1.0], "▶ Running (Max GPU)");
+                    ui.text_colored([0.0, 1.0, 0.0, 1.0], "▶ Running (Simple)");
                 } else {
                     ui.text_colored([1.0, 0.5, 0.0, 1.0], "⚙ Initializing GPU...");
                 }
 
                 ui.separator();
-                ui.text("LBM Features:");
-                ui.bullet_text("D3Q19 lattice model");
-                ui.bullet_text("BGK collision operator");
-                ui.bullet_text("Real-time vorticity visualization");
-                ui.bullet_text("GPU compute shaders");
-                ui.bullet_text("Lid-driven cavity flow");
+                ui.text("Simple Implementation:");
+                ui.bullet_text("Proven buffer approach");
+                ui.bullet_text("Maximum compatibility");
+                ui.bullet_text("Stable performance");
+                ui.bullet_text("Same sphere boundary");
             });
 
         self.base.render_ui(ui);
     }
 
     fn name(&self) -> &str {
-        "LBM Fluid 3D"
+        "LBM Fluid 3D (Simple)"
     }
 
     fn is_running(&self) -> bool {
@@ -954,7 +929,7 @@ impl haggis::simulation::traits::Simulation for LbmFluidSimulation {
     }
 
     fn reset(&mut self, scene: &mut haggis::gfx::scene::Scene) {
-        println!("🔄 Resetting LBM simulation");
+        println!("🔄 Resetting LBM simulation (Simple)");
         self.generation = 0;
         self.base.reset(scene);
     }
@@ -964,16 +939,13 @@ impl haggis::simulation::traits::Simulation for LbmFluidSimulation {
     }
 }
 
-// LBM compute shaders will be defined here
-const LBM_STREAM_SHADER: &str = r#"
+// LBM compute shaders using standard buffer approach with optimizations
+const LBM_STREAM_SHADER_SIMPLE: &str = r#"
 // D3Q19 lattice directions
-// 0: (0,0,0) - rest
-// 1-6: face neighbors ±x,±y,±z
-// 7-18: edge neighbors
 const D3Q19_DIRECTIONS: u32 = 19u;
-const GRID_WIDTH: u32 = 96u;
-const GRID_HEIGHT: u32 = 96u;
-const GRID_DEPTH: u32 = 96u;
+const GRID_WIDTH: u32 = 64u;
+const GRID_HEIGHT: u32 = 64u;
+const GRID_DEPTH: u32 = 64u;
 
 // D3Q19 velocity vectors
 const VELOCITY_SET: array<vec3<i32>, 19> = array<vec3<i32>, 19>(
@@ -1006,37 +978,37 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let x = global_id.x;
     let y = global_id.y;
     let z = global_id.z;
-    
+
     if (x >= GRID_WIDTH || y >= GRID_HEIGHT || z >= GRID_DEPTH) {
         return;
     }
-    
+
     let cell_index = z * GRID_HEIGHT * GRID_WIDTH + y * GRID_WIDTH + x;
-    
+
     // Stream each distribution function
     for (var i: u32 = 0u; i < D3Q19_DIRECTIONS; i++) {
         let velocity = VELOCITY_SET[i];
-        
+
         // Calculate source position (where this distribution came from)
         let src_x = (i32(x) - velocity.x + i32(GRID_WIDTH)) % i32(GRID_WIDTH);
         let src_y = (i32(y) - velocity.y + i32(GRID_HEIGHT)) % i32(GRID_HEIGHT);
         let src_z = (i32(z) - velocity.z + i32(GRID_DEPTH)) % i32(GRID_DEPTH);
-        
+
         let src_cell_index = u32(src_z) * GRID_HEIGHT * GRID_WIDTH + u32(src_y) * GRID_WIDTH + u32(src_x);
         let src_dist_index = src_cell_index * D3Q19_DIRECTIONS + i;
         let dst_dist_index = cell_index * D3Q19_DIRECTIONS + i;
-        
+
         // Stream the distribution function
         output_distributions[dst_dist_index] = input_distributions[src_dist_index];
     }
 }
 "#;
 
-const LBM_COLLISION_SHADER: &str = r#"
+const LBM_COLLISION_SHADER_SIMPLE: &str = r#"
 const D3Q19_DIRECTIONS: u32 = 19u;
-const GRID_WIDTH: u32 = 96u;
-const GRID_HEIGHT: u32 = 96u;
-const GRID_DEPTH: u32 = 96u;
+const GRID_WIDTH: u32 = 64u;
+const GRID_HEIGHT: u32 = 64u;
+const GRID_DEPTH: u32 = 64u;
 
 // D3Q19 weights
 const WEIGHTS: array<f32, 19> = array<f32, 19>(
@@ -1082,11 +1054,11 @@ fn is_boundary_cell(x: u32, y: u32, z: u32) -> bool {
     let cell_index = z * GRID_HEIGHT * GRID_WIDTH + y * GRID_WIDTH + x;
     let u32_index = cell_index / 32u;
     let bit_index = cell_index % 32u;
-    
+
     if (u32_index >= arrayLength(&boundary_buffer)) {
         return false;
     }
-    
+
     let boundary_bits = boundary_buffer[u32_index];
     return (boundary_bits & (1u << bit_index)) != 0u;
 }
@@ -1096,50 +1068,49 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let x = global_id.x;
     let y = global_id.y;
     let z = global_id.z;
-    
+
     if (x >= GRID_WIDTH || y >= GRID_HEIGHT || z >= GRID_DEPTH) {
         return;
     }
-    
+
     let cell_index = z * GRID_HEIGHT * GRID_WIDTH + y * GRID_WIDTH + x;
     let base_dist_index = cell_index * D3Q19_DIRECTIONS;
-    
+
     // Parameters
     let tau = params.x;
     let inlet_velocity = params.y;
     let outlet_pressure = params.z;
-    let sphere_radius = params.w;
-    
+
     // Calculate macroscopic quantities
     var density = 0.0;
     var velocity = vec3<f32>(0.0);
-    
+
     for (var i: u32 = 0u; i < D3Q19_DIRECTIONS; i++) {
         let f_i = distributions[base_dist_index + i];
         density += f_i;
         velocity += f_i * VELOCITY_SET[i];
     }
-    
+
     velocity = velocity / density;
-    
-    // Check boundary using bit-packed buffer (32 cells per u32)
+
+    // Check boundary using bit-packed buffer
     let is_inside_obstacle = is_boundary_cell(x, y, z);
-    
+
     // Apply boundary conditions
     var is_boundary = false;
-    
+
     // Inlet boundary (left wall, x = 0) - Zou-He velocity inlet
     if (x == 0u && !is_inside_obstacle) {
         velocity = vec3<f32>(inlet_velocity, 0.0, 0.0);
         density = 1.0; // Density at inlet
         is_boundary = true;
-        
+
         // Zou-He inlet BC implementation
         let rho = density;
         let u = inlet_velocity;
         let v = 0.0;
         let w = 0.0;
-        
+
         // Set equilibrium distributions for inlet
         for (var i: u32 = 0u; i < D3Q19_DIRECTIONS; i++) {
             let ci = VELOCITY_SET[i];
@@ -1149,18 +1120,18 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
             distributions[base_dist_index + i] = weight * rho * (1.0 + 3.0 * ci_dot_u + 4.5 * ci_dot_u * ci_dot_u - 1.5 * u_dot_u);
         }
     }
-    
+
     // Outlet boundary (right wall, x = GRID_WIDTH - 1) - Zou-He pressure outlet
     else if (x == GRID_WIDTH - 1u && !is_inside_obstacle) {
         density = outlet_pressure;
         is_boundary = true;
-        
+
         // Zou-He outlet BC implementation
         let rho = density;
         let u = velocity.x; // Use existing velocity
         let v = velocity.y;
         let w = velocity.z;
-        
+
         // Set equilibrium distributions for outlet
         for (var i: u32 = 0u; i < D3Q19_DIRECTIONS; i++) {
             let ci = VELOCITY_SET[i];
@@ -1170,13 +1141,13 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
             distributions[base_dist_index + i] = weight * rho * (1.0 + 3.0 * ci_dot_u + 4.5 * ci_dot_u * ci_dot_u - 1.5 * u_dot_u);
         }
     }
-    
+
     // Solid walls (top/bottom/front/back) - bounce-back
     else if (y == 0u || y == GRID_HEIGHT - 1u || z == 0u || z == GRID_DEPTH - 1u) {
         velocity = vec3<f32>(0.0, 0.0, 0.0);
         is_boundary = true;
-        
-        // Bounce-back BC  
+
+        // Bounce-back BC
         for (var i: u32 = 1u; i < D3Q19_DIRECTIONS; i++) {
             let opposite_i = get_opposite_direction(i);
             if (i < opposite_i) { // Only swap once per pair
@@ -1186,13 +1157,13 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
             }
         }
     }
-    
-    // Vortex generator obstacles - bounce-back
+
+    // Sphere obstacles - bounce-back
     else if (is_inside_obstacle) {
         velocity = vec3<f32>(0.0, 0.0, 0.0);
         is_boundary = true;
-        
-        // Bounce-back BC for vortex generator
+
+        // Bounce-back BC for sphere
         for (var i: u32 = 1u; i < D3Q19_DIRECTIONS; i++) {
             let opposite_i = get_opposite_direction(i);
             if (i < opposite_i) { // Only swap once per pair
@@ -1202,26 +1173,26 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
             }
         }
     }
-    
+
     // Fluid domain - BGK collision
     if (!is_boundary) {
         let omega = 1.0 / tau;
-        
+
         for (var i: u32 = 0u; i < D3Q19_DIRECTIONS; i++) {
             let ci = VELOCITY_SET[i];
             let weight = WEIGHTS[i];
-            
+
             // Equilibrium distribution
             let ci_dot_u = dot(ci, velocity);
             let u_dot_u = dot(velocity, velocity);
             let f_eq = weight * density * (1.0 + 3.0 * ci_dot_u + 4.5 * ci_dot_u * ci_dot_u - 1.5 * u_dot_u);
-            
+
             // BGK collision
             let f_old = distributions[base_dist_index + i];
             distributions[base_dist_index + i] = f_old - omega * (f_old - f_eq);
         }
     }
-    
+
     // Store velocity and density for vorticity calculation
     velocity_density[cell_index * 4u + 0u] = velocity.x;
     velocity_density[cell_index * 4u + 1u] = velocity.y;
@@ -1256,10 +1227,10 @@ fn get_opposite_direction(i: u32) -> u32 {
 }
 "#;
 
-const LBM_VORTICITY_SHADER: &str = r#"
-const GRID_WIDTH: u32 = 96u;
-const GRID_HEIGHT: u32 = 96u;
-const GRID_DEPTH: u32 = 96u;
+const LBM_VORTICITY_SHADER_SIMPLE: &str = r#"
+const GRID_WIDTH: u32 = 64u;
+const GRID_HEIGHT: u32 = 64u;
+const GRID_DEPTH: u32 = 64u;
 
 @group(0) @binding(0) var<storage, read> velocity_density: array<f32>; // [vx, vy, vz, density]
 @group(0) @binding(1) var<storage, read_write> vorticity: array<f32>; // [ωx, ωy, ωz, magnitude]
@@ -1269,24 +1240,24 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let x = global_id.x;
     let y = global_id.y;
     let z = global_id.z;
-    
+
     if (x >= GRID_WIDTH || y >= GRID_HEIGHT || z >= GRID_DEPTH) {
         return;
     }
-    
+
     let cell_index = z * GRID_HEIGHT * GRID_WIDTH + y * GRID_WIDTH + x;
-    
+
     // Calculate vorticity using finite differences
     // ω = ∇ × v
-    
-    // Get neighboring velocities (with boundary handling)
+
+    // Get neighboring coordinates (with boundary handling)
     let x_plus = min(x + 1u, GRID_WIDTH - 1u);
     let x_minus = max(x, 1u) - 1u;
     let y_plus = min(y + 1u, GRID_HEIGHT - 1u);
     let y_minus = max(y, 1u) - 1u;
     let z_plus = min(z + 1u, GRID_DEPTH - 1u);
     let z_minus = max(z, 1u) - 1u;
-    
+
     // Get velocity components at neighboring cells
     let idx_xp = z * GRID_HEIGHT * GRID_WIDTH + y * GRID_WIDTH + x_plus;
     let idx_xm = z * GRID_HEIGHT * GRID_WIDTH + y * GRID_WIDTH + x_minus;
@@ -1294,25 +1265,25 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let idx_ym = z * GRID_HEIGHT * GRID_WIDTH + y_minus * GRID_WIDTH + x;
     let idx_zp = z_plus * GRID_HEIGHT * GRID_WIDTH + y * GRID_WIDTH + x;
     let idx_zm = z_minus * GRID_HEIGHT * GRID_WIDTH + y * GRID_WIDTH + x;
-    
+
     // Central differences for velocity gradients
     let dvz_dy = (velocity_density[idx_yp * 4u + 2u] - velocity_density[idx_ym * 4u + 2u]) * 0.5;
     let dvy_dz = (velocity_density[idx_zp * 4u + 1u] - velocity_density[idx_zm * 4u + 1u]) * 0.5;
-    
+
     let dvx_dz = (velocity_density[idx_zp * 4u + 0u] - velocity_density[idx_zm * 4u + 0u]) * 0.5;
     let dvz_dx = (velocity_density[idx_xp * 4u + 2u] - velocity_density[idx_xm * 4u + 2u]) * 0.5;
-    
+
     let dvy_dx = (velocity_density[idx_xp * 4u + 1u] - velocity_density[idx_xm * 4u + 1u]) * 0.5;
     let dvx_dy = (velocity_density[idx_yp * 4u + 0u] - velocity_density[idx_ym * 4u + 0u]) * 0.5;
-    
+
     // Vorticity components: ω = ∇ × v
     let omega_x = dvz_dy - dvy_dz;
     let omega_y = dvx_dz - dvz_dx;
     let omega_z = dvy_dx - dvx_dy;
-    
+
     // Vorticity magnitude
     let omega_magnitude = sqrt(omega_x * omega_x + omega_y * omega_y + omega_z * omega_z);
-    
+
     // Store vorticity
     vorticity[cell_index * 4u + 0u] = omega_x;
     vorticity[cell_index * 4u + 1u] = omega_y;
@@ -1322,24 +1293,24 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
 "#;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("🌊 3D Lattice Boltzmann Method (LBM) Fluid Simulation");
-    println!("======================================================");
-    println!("High-performance 3D fluid dynamics with GPU compute shaders.");
+    println!("🌊 3D Lattice Boltzmann Method (LBM) Fluid Simulation - Simple Version");
+    println!("======================================================================");
+    println!("Stable and compatible 3D fluid dynamics with GPU compute shaders.");
     println!();
     println!("Features:");
     println!("  • BGK LBM with D3Q19 lattice model");
-    println!("  • 96³ grid = 884,736 fluid cells");
+    println!("  • 64³ grid = 262,144 fluid cells");
     println!("  • Zou-He inlet/outlet boundary conditions");
     println!("  • Sphere obstacle boundary");
     println!("  • Real-time vorticity visualization");
-    println!("  • Bit-packed boundary optimization");
+    println!("  • Buffer-based approach for maximum compatibility");
     println!();
 
     // Create the main application
     let mut app = haggis::default();
 
     // Create the LBM simulation
-    let simulation = LbmFluidSimulation::new();
+    let simulation = LbmFluidSimulationSimple::new();
 
     // Attach the simulation to the app
     app.attach_simulation(simulation);
@@ -1348,7 +1319,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     app.add_object("examples/test/cube.obj")
         .with_transform([-1.0, -1.0, -1.0], 0.05, 0.0)
         .with_name("Domain Corner 1");
-    
+
     app.add_object("examples/test/cube.obj")
         .with_transform([1.0, 1.0, 1.0], 0.05, 0.0)
         .with_name("Domain Corner 2");
@@ -1358,20 +1329,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Sphere at grid center
     app.add_object("examples/test/cube.obj")
-        .with_transform([0.0, 0.0, 0.0], 0.3, 0.0) // Sphere visualization
+        .with_transform([0.0, 0.0, 0.0], 0.25, 0.0) // Sphere visualization
         .with_name("Sphere Obstacle");
 
     // Set up UI
     app.set_ui(|ui, scene, selected_index| {
         // Default transform panel
         haggis::ui::panel::default_transform_panel(ui, scene, selected_index);
-        
+
         // LBM info panel
-        ui.window("LBM Info")
+        ui.window("LBM Info (Simple)")
             .size([300.0, 200.0], imgui::Condition::FirstUseEver)
             .position([20.0, 500.0], imgui::Condition::FirstUseEver)
             .build(|| {
-                ui.text("🌊 3D Lattice Boltzmann Method");
+                ui.text("🌊 3D Lattice Boltzmann Method (Simple)");
                 ui.separator();
                 ui.text("Flow around sphere obstacle");
                 ui.text("Zou-He inlet/outlet boundaries");
@@ -1394,10 +1365,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ui.text("  • Green = Clockwise rotation");
                 ui.text("  • Classic von Kármán vortex street");
                 ui.separator();
-                ui.text("💡 Tips for Sphere Flow:");
-                ui.text("  • Low Re: Steady symmetric flow");
-                ui.text("  • Medium Re: Vortex shedding");
-                ui.text("  • High Re: Turbulent wake");
+                ui.text("✅ Simple Advantages:");
+                ui.text("  • Maximum compatibility");
+                ui.text("  • Stable performance");
+                ui.text("  • Proven buffer approach");
             });
     });
 

@@ -144,12 +144,12 @@ impl VisualizationMaterial {
             ..Default::default()
         });
 
-        // Create and initialize filter uniform buffer with default sharp filtering
+        // Create and initialize filter uniform buffer with default values
         let filter_uniform_data = [
             0u32,                    // filter_mode: 0 = sharp (default)
+            0u32,                    // coloring_mode: 0 = vorticity (default)
             format.width,            // grid_width
-            format.height,           // grid_height  
-            0u32,                    // padding
+            format.height,           // grid_height
         ];
         
         let filter_uniform_buffer = device.create_buffer(&BufferDescriptor {
@@ -434,19 +434,35 @@ impl VisualizationMaterial {
 
     /// Update the filter mode for GPU materials
     pub fn update_filter_mode(&self, queue: &Queue, filter_mode: crate::visualization::ui::cut_plane_controls::FilterMode) {
+        // Default to vorticity coloring when only filter mode is updated
+        self.update_filter_and_coloring_mode(queue, filter_mode, crate::visualization::ui::cut_plane_controls::ColoringMode::Vorticity);
+    }
+
+    /// Update both filter mode and coloring mode for GPU materials
+    pub fn update_filter_and_coloring_mode(
+        &self,
+        queue: &Queue,
+        filter_mode: crate::visualization::ui::cut_plane_controls::FilterMode,
+        coloring_mode: crate::visualization::ui::cut_plane_controls::ColoringMode
+    ) {
         if let (Some(filter_buffer), Some(format)) = (&self.filter_uniform_buffer, &self.buffer_format) {
             let filter_mode_value = match filter_mode {
                 crate::visualization::ui::cut_plane_controls::FilterMode::Sharp => 0u32,
                 crate::visualization::ui::cut_plane_controls::FilterMode::Smooth => 1u32,
             };
-            
+
+            let coloring_mode_value = match coloring_mode {
+                crate::visualization::ui::cut_plane_controls::ColoringMode::Vorticity => 0u32,
+                crate::visualization::ui::cut_plane_controls::ColoringMode::AirSpeed => 1u32,
+            };
+
             let filter_uniform_data = [
-                filter_mode_value,   // filter_mode
-                format.width,        // grid_width
-                format.height,       // grid_height
-                0u32,                // padding
+                filter_mode_value,    // filter_mode
+                coloring_mode_value,  // coloring_mode
+                format.width,         // grid_width
+                format.height,        // grid_height
             ];
-            
+
             queue.write_buffer(filter_buffer, 0, bytemuck::cast_slice(&filter_uniform_data));
         }
     }

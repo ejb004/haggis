@@ -60,7 +60,7 @@ pub mod visualization;
 pub mod wgpu_utils;
 
 // Re-export main types for convenience
-pub use app::HaggisApp;
+pub use app::{HaggisApp, ComputeMode};
 pub use ui::{UiFont, UiStyle};
 
 // Re-export builder types
