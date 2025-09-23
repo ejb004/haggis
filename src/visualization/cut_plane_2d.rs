@@ -322,7 +322,7 @@ impl CutPlane2D {
             },
             ColoringMode::AirSpeed => {
                 // Encode speed values in range [0,1] for texture
-                let max_speed = 0.15; // Match shader's max_speed
+                let max_speed = 0.3; // Increased range for realistic LBM velocity magnitudes (match shader)
                 data.iter()
                     .map(|&value| (value / max_speed).clamp(0.0, 1.0))
                     .collect()

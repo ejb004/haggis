@@ -293,6 +293,7 @@ impl RenderEngine {
             position: [20.0, 20.0, 20.0],
             color: [1.0, 1.0, 1.0],
             intensity: 10000.0,
+            shadows_enabled: true, // Shadows enabled by default
         };
         let global_ubo = GlobalUBO::new(&device);
         let mut global_bindings = GlobalBindings::new(&device);

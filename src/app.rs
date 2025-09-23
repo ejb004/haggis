@@ -63,6 +63,7 @@ use crate::{
         },
         picking::ObjectPicker,
         rendering::render_engine::RenderEngine,
+        resources::global_bindings::LightConfig,
         scene::{object::ObjectBuilder, scene::Scene},
     },
     performance::PerformanceMonitor,
@@ -196,6 +197,8 @@ pub struct AppState {
     pub show_performance_panel: bool,
     /// Enable VSync for smoother visuals vs higher FPS
     pub enable_vsync: bool,
+    /// Enable shadow mapping (true by default)
+    pub enable_shadows: bool,
     /// Framerate limit (None = unlimited, Some(fps) = limited)
     pub framerate_limit: Option<f32>,
     /// Frame timing for FPS limiting
@@ -265,6 +268,7 @@ impl HaggisApp {
                 performance_monitor: PerformanceMonitor::new(),
                 show_performance_panel: false, // Hidden by default
                 enable_vsync: false, // Disabled when framerate limiting is enabled
+                enable_shadows: true, // Shadows enabled by default
                 framerate_limit: Some(144.0), // Higher limit to ensure we hit 120fps target
                 last_frame_time: std::time::Instant::now(),
                 last_performance_frame_time: std::time::Instant::now(),
@@ -743,10 +747,38 @@ impl HaggisApp {
     /// ```
     pub fn set_vsync(&mut self, enable: bool) {
         self.app_state.enable_vsync = enable;
-        
+
         // Update render engine surface configuration if available
         if let Some(render_engine) = &mut self.app_state.render_engine {
             render_engine.set_vsync(enable);
+        }
+    }
+
+    /// Enable or disable shadow mapping for the lighting system.
+    ///
+    /// When shadows are enabled, the lighting system will render shadow maps
+    /// for realistic shadowing effects. When disabled, objects will be lit
+    /// without shadows, which can improve performance and is useful for
+    /// certain visualization modes like fluid simulations.
+    ///
+    /// This setting modifies the light configuration and can be changed at runtime.
+    ///
+    /// # Arguments
+    /// * `enable` - Whether to enable shadow mapping
+    ///
+    /// # Examples
+    /// ```rust
+    /// let mut app = haggis::default();
+    /// app.set_shadows_enabled(false); // Disable shadows for better performance
+    /// ```
+    pub fn set_shadows_enabled(&mut self, enable: bool) {
+        self.app_state.enable_shadows = enable;
+
+        // Update render engine shadow configuration if available
+        if let Some(render_engine) = &mut self.app_state.render_engine {
+            let mut light_config = render_engine.get_light();
+            light_config.shadows_enabled = enable;
+            render_engine.set_light(light_config);
         }
     }
 
@@ -1155,9 +1187,14 @@ impl ApplicationHandler for AppState {
             self.ui_manager = Some(ui_manager);
             self.render_engine = Some(renderer);
 
-            // Configure VSync based on initial settings
+            // Configure VSync and shadows based on initial settings
             if let Some(render_engine) = &mut self.render_engine {
                 render_engine.set_vsync(self.enable_vsync);
+
+                // Apply shadow preference
+                let mut light_config = render_engine.get_light();
+                light_config.shadows_enabled = self.enable_shadows;
+                render_engine.set_light(light_config);
             }
 
             // Initialize GPU resources for current simulation

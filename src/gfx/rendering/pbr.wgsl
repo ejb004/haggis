@@ -2,7 +2,7 @@ struct GlobalUniform {
     view_position: vec4<f32>,
     view_proj: mat4x4<f32>,
     light_position: vec3<f32>,
-    _padding1: f32,
+    shadows_enabled: f32,
     light_color: vec3<f32>,
     light_intensity: f32,
     light_view_proj: mat4x4<f32>,
@@ -154,7 +154,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let attenuation = 1.0 / (distance * distance);
     let radiance = global.light_color * global.light_intensity * attenuation * 5.0;
 
-    let shadow_factor = calculate_shadow(in, light_dir);
+    // Conditional shadow calculation based on global flag
+    let shadow_factor = select(1.0, calculate_shadow(in, light_dir), global.shadows_enabled > 0.5);
     let ambient = vec3<f32>(0.12) * albedo * (1.0 - metallic * 0.2);
     let lo = (diffuse + specular) * radiance * n_dot_l * shadow_factor;
 

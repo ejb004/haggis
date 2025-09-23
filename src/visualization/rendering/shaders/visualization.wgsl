@@ -59,20 +59,22 @@ struct FilterUniforms {
 @group(1) @binding(4)
 var<uniform> filter_uniforms: FilterUniforms;
 
-// Convert vorticity value to directional color
-// Positive vorticity (counter-clockwise) = Red
-// Negative vorticity (clockwise) = Green
-// Zero vorticity = Black
+// Convert vorticity value to scientific diverging colormap
+// Negative vorticity (clockwise) = Green -> Black (at zero) -> Red = Positive vorticity (counter-clockwise)
+// Smooth scientific color scale with proper interpolation
 fn vorticity_to_color(vorticity: f32) -> vec4<f32> {
     let max_vorticity = 0.1; // Much smaller range for LBM vorticity
-    let normalized = clamp(abs(vorticity) / max_vorticity, 0.0, 1.0);
+    let normalized = clamp(vorticity / max_vorticity, -1.0, 1.0);
 
-    if (vorticity > 0.0) {
-        // Positive vorticity: Red channel
-        return vec4<f32>(normalized, 0.0, 0.0, 1.0);
-    } else if (vorticity < 0.0) {
-        // Negative vorticity: Green channel
-        return vec4<f32>(0.0, normalized, 0.0, 1.0);
+    // Scientific diverging colormap: Green (-1) -> Black (0) -> Red (+1)
+    if (normalized < 0.0) {
+        // Negative vorticity: interpolate from black to green
+        let intensity = -normalized; // Convert to positive for interpolation
+        return vec4<f32>(0.0, intensity, 0.0, 1.0);
+    } else if (normalized > 0.0) {
+        // Positive vorticity: interpolate from black to red
+        let intensity = normalized;
+        return vec4<f32>(intensity, 0.0, 0.0, 1.0);
     } else {
         // Zero vorticity: Black
         return vec4<f32>(0.0, 0.0, 0.0, 1.0);
@@ -83,7 +85,7 @@ fn vorticity_to_color(vorticity: f32) -> vec4<f32> {
 // Low speed = Blue, High speed = Red
 // Smooth gradient through spectrum
 fn velocity_to_color(speed: f32) -> vec4<f32> {
-    let max_speed = 0.15; // Adjusted for LBM velocity range
+    let max_speed = 0.3; // Increased range for realistic LBM velocity magnitudes
     let normalized = clamp(speed / max_speed, 0.0, 1.0);
 
     // Blue to red color mapping for speed visualization
@@ -180,7 +182,7 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
             return vorticity_to_color(decoded_vorticity);
         } else {
             // Air speed mode - decode from [0,1] back to [0,max]
-            let max_speed = 0.15;
+            let max_speed = 0.3; // Increased range for realistic LBM velocity magnitudes
             let decoded_speed = encoded_value * max_speed;
             return velocity_to_color(decoded_speed);
         }

@@ -27,7 +27,7 @@ pub struct GlobalUBOContent {
 
     // Light data
     light_position: [f32; 3],       // Light position
-    _padding1: f32,                 // Padding for alignment
+    shadows_enabled: f32,           // Shadow enable flag (0.0 = disabled, 1.0 = enabled)
     light_color: [f32; 3],          // Light color
     light_intensity: f32,           // Light intensity
     light_view_proj: [[f32; 4]; 4], // Light's view-projection matrix for shadows
@@ -43,6 +43,7 @@ pub struct LightConfig {
     pub position: [f32; 3],
     pub color: [f32; 3],
     pub intensity: f32,
+    pub shadows_enabled: bool,
 }
 
 impl Default for LightConfig {
@@ -51,6 +52,7 @@ impl Default for LightConfig {
             position: [5.0, 10.0, 5.0],
             color: [1.0, 1.0, 1.0],
             intensity: 1.0,
+            shadows_enabled: true, // Shadows enabled by default
         }
     }
 }
@@ -108,7 +110,7 @@ pub fn update_global_ubo_with_light(
 
         // Light data
         light_position: light.position,
-        _padding1: 0.0,
+        shadows_enabled: if light.shadows_enabled { 1.0 } else { 0.0 },
         light_color: light.color,
         light_intensity: light.intensity,
         light_view_proj: light_view_proj.into(),

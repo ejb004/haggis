@@ -24,15 +24,12 @@
 //!
 //! Run with: `cargo run --example lbm_fluid_3d_texture`
 
-use haggis::prelude::*;
-use haggis::{
-    simulation::BaseSimulation,
-    visualization::traits::VisualizationComponent,
-};
 use cgmath::Vector3;
+use haggis::prelude::*;
+use haggis::{simulation::BaseSimulation, visualization::traits::VisualizationComponent};
 
 /// Grid size for the 3D LBM simulation (96³ with computational optimizations)
-const GRID_SIZE: u32 = 96;
+const GRID_SIZE: u32 = 64;
 const GRID_WIDTH: u32 = GRID_SIZE;
 const GRID_HEIGHT: u32 = GRID_SIZE;
 const GRID_DEPTH: u32 = GRID_SIZE;
@@ -61,11 +58,11 @@ pub struct LbmParams {
 impl Default for LbmParams {
     fn default() -> Self {
         Self {
-            tau: 0.55,              // Optimized relaxation time for stability and speed
-            inlet_velocity: 0.12,   // Higher velocity for stronger vortex shedding
-            outlet_pressure: 1.0,   // Outlet pressure (atmospheric)
-            sphere_radius: 8.0,     // Smaller sphere radius for 80³ grid
-            reynolds: 150.0,        // Higher Reynolds number for better vortex shedding
+            tau: 0.55,            // Optimized relaxation time for stability and speed
+            inlet_velocity: 0.12, // Higher velocity for stronger vortex shedding
+            outlet_pressure: 1.0, // Outlet pressure (atmospheric)
+            sphere_radius: 8.0,   // Smaller sphere radius for 80³ grid
+            reynolds: 150.0,      // Higher Reynolds number for better vortex shedding
         }
     }
 }
@@ -146,7 +143,7 @@ struct LbmFluidSimulationTexture {
 
     // Dual coloring mode support
     coloring_mode: ColoringMode, // Toggle between air speed and vorticity
-    cpu_velocity: Vec<f32>, // 4 floats per cell: [vx, vy, vz, speed]
+    cpu_velocity: Vec<f32>,      // 4 floats per cell: [vx, vy, vz, speed]
 }
 
 impl LbmFluidSimulationTexture {
@@ -175,7 +172,7 @@ impl LbmFluidSimulationTexture {
         let fz = z as f32;
 
         // Sphere center at grid center
-        let sphere_center_x = GRID_WIDTH as f32 * 0.5;
+        let sphere_center_x = GRID_WIDTH as f32 * 0.2;
         let sphere_center_y = GRID_HEIGHT as f32 * 0.5;
         let sphere_center_z = GRID_DEPTH as f32 * 0.5;
 
@@ -274,20 +271,29 @@ impl LbmFluidSimulationTexture {
 
         // Create regular buffers instead of 3D textures for better compatibility
         // This approach provides similar benefits with better GPU support
-        let distributions_size = (self.width * self.height * self.depth * D3Q19_DIRECTIONS * std::mem::size_of::<f32>() as u32) as u64;
-        let velocity_size = (self.width * self.height * self.depth * 4 * std::mem::size_of::<f32>() as u32) as u64;
+        let distributions_size = (self.width
+            * self.height
+            * self.depth
+            * D3Q19_DIRECTIONS
+            * std::mem::size_of::<f32>() as u32) as u64;
+        let velocity_size =
+            (self.width * self.height * self.depth * 4 * std::mem::size_of::<f32>() as u32) as u64;
 
         let distributions_texture_a = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("LBM Distributions Buffer A (Texture Compat)"),
             size: distributions_size,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::COPY_SRC,
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
 
         let distributions_texture_b = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("LBM Distributions Buffer B (Texture Compat)"),
             size: distributions_size,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::COPY_SRC,
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
 
@@ -295,7 +301,9 @@ impl LbmFluidSimulationTexture {
         let velocity_texture = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("LBM Velocity Buffer (Texture Compat)"),
             size: velocity_size,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::COPY_SRC,
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
 
@@ -303,7 +311,9 @@ impl LbmFluidSimulationTexture {
         let vorticity_texture = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("LBM Vorticity Buffer (Texture Compat)"),
             size: velocity_size,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::COPY_SRC,
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
 
@@ -439,11 +449,13 @@ impl LbmFluidSimulationTexture {
         // Create compute pipelines
         let stream_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
             label: Some("LBM Stream Pipeline (3D Texture)"),
-            layout: Some(&device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("LBM Stream Pipeline Layout"),
-                bind_group_layouts: &[&stream_layout],
-                push_constant_ranges: &[],
-            })),
+            layout: Some(
+                &device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                    label: Some("LBM Stream Pipeline Layout"),
+                    bind_group_layouts: &[&stream_layout],
+                    push_constant_ranges: &[],
+                }),
+            ),
             module: &stream_shader,
             entry_point: Some("main"),
             cache: None,
@@ -452,11 +464,13 @@ impl LbmFluidSimulationTexture {
 
         let collision_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
             label: Some("LBM Collision Pipeline (3D Texture)"),
-            layout: Some(&device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("LBM Collision Pipeline Layout"),
-                bind_group_layouts: &[&collision_layout],
-                push_constant_ranges: &[],
-            })),
+            layout: Some(
+                &device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                    label: Some("LBM Collision Pipeline Layout"),
+                    bind_group_layouts: &[&collision_layout],
+                    push_constant_ranges: &[],
+                }),
+            ),
             module: &collision_shader,
             entry_point: Some("main"),
             cache: None,
@@ -465,11 +479,13 @@ impl LbmFluidSimulationTexture {
 
         let vorticity_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
             label: Some("LBM Vorticity Pipeline (3D Texture)"),
-            layout: Some(&device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("LBM Vorticity Pipeline Layout"),
-                bind_group_layouts: &[&vorticity_layout],
-                push_constant_ranges: &[],
-            })),
+            layout: Some(
+                &device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                    label: Some("LBM Vorticity Pipeline Layout"),
+                    bind_group_layouts: &[&vorticity_layout],
+                    push_constant_ranges: &[],
+                }),
+            ),
             module: &vorticity_shader,
             entry_point: Some("main"),
             cache: None,
@@ -603,13 +619,25 @@ impl LbmFluidSimulationTexture {
             // Set equilibrium distributions for rest state
             // For D3Q19: w0=1/3, w1-6=1/18, w7-18=1/36
             let weights = [
-                1.0/3.0,                           // 0: rest
-                1.0/18.0, 1.0/18.0, 1.0/18.0,     // 1-3: face neighbors
-                1.0/18.0, 1.0/18.0, 1.0/18.0,     // 4-6: face neighbors
-                1.0/36.0, 1.0/36.0, 1.0/36.0,     // 7-9: edge neighbors
-                1.0/36.0, 1.0/36.0, 1.0/36.0,     // 10-12: edge neighbors
-                1.0/36.0, 1.0/36.0, 1.0/36.0,     // 13-15: edge neighbors
-                1.0/36.0, 1.0/36.0, 1.0/36.0,     // 16-18: edge neighbors
+                1.0 / 3.0, // 0: rest
+                1.0 / 18.0,
+                1.0 / 18.0,
+                1.0 / 18.0, // 1-3: face neighbors
+                1.0 / 18.0,
+                1.0 / 18.0,
+                1.0 / 18.0, // 4-6: face neighbors
+                1.0 / 36.0,
+                1.0 / 36.0,
+                1.0 / 36.0, // 7-9: edge neighbors
+                1.0 / 36.0,
+                1.0 / 36.0,
+                1.0 / 36.0, // 10-12: edge neighbors
+                1.0 / 36.0,
+                1.0 / 36.0,
+                1.0 / 36.0, // 13-15: edge neighbors
+                1.0 / 36.0,
+                1.0 / 36.0,
+                1.0 / 36.0, // 16-18: edge neighbors
             ];
 
             for cell in 0..total_cells {
@@ -619,17 +647,29 @@ impl LbmFluidSimulationTexture {
             }
 
             // Upload to both distribution buffers
-            queue.write_buffer(&gpu_resources.distributions_texture_a, 0, bytemuck::cast_slice(&distributions));
-            queue.write_buffer(&gpu_resources.distributions_texture_b, 0, bytemuck::cast_slice(&distributions));
+            queue.write_buffer(
+                &gpu_resources.distributions_texture_a,
+                0,
+                bytemuck::cast_slice(&distributions),
+            );
+            queue.write_buffer(
+                &gpu_resources.distributions_texture_b,
+                0,
+                bytemuck::cast_slice(&distributions),
+            );
 
             // Upload parameters
             let params_data = [
                 self.params.tau,
                 self.params.inlet_velocity,
                 self.params.outlet_pressure,
-                self.params.sphere_radius
+                self.params.sphere_radius,
             ];
-            queue.write_buffer(&gpu_resources.params_buffer, 0, bytemuck::cast_slice(&params_data));
+            queue.write_buffer(
+                &gpu_resources.params_buffer,
+                0,
+                bytemuck::cast_slice(&params_data),
+            );
 
             println!("🌊 LBM simulation (Buffer Compat) initialized with equilibrium state");
         }
@@ -638,9 +678,6 @@ impl LbmFluidSimulationTexture {
     /// Run one LBM timestep using 3D textures: stream -> collision -> vorticity
     fn run_lbm_step(&mut self, device: &Device, queue: &Queue) {
         if let Some(ref mut gpu_resources) = self.gpu_resources {
-            if self.generation % 100 == 0 {
-                println!("🌊 LBM Step #{} running...", self.generation);
-            }
             let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("LBM Step Encoder (3D Texture)"),
             });
@@ -668,7 +705,11 @@ impl LbmFluidSimulationTexture {
                 let num_workgroups_y = (self.height + workgroup_size_xy - 1) / workgroup_size_xy;
                 let num_workgroups_z = (self.depth + workgroup_size_z - 1) / workgroup_size_z;
 
-                stream_pass.dispatch_workgroups(num_workgroups_x, num_workgroups_y, num_workgroups_z);
+                stream_pass.dispatch_workgroups(
+                    num_workgroups_x,
+                    num_workgroups_y,
+                    num_workgroups_z,
+                );
             }
 
             // Flip ping-pong state after streaming
@@ -697,7 +738,11 @@ impl LbmFluidSimulationTexture {
                 let num_workgroups_y = (self.height + workgroup_size_xy - 1) / workgroup_size_xy;
                 let num_workgroups_z = (self.depth + workgroup_size_z - 1) / workgroup_size_z;
 
-                collision_pass.dispatch_workgroups(num_workgroups_x, num_workgroups_y, num_workgroups_z);
+                collision_pass.dispatch_workgroups(
+                    num_workgroups_x,
+                    num_workgroups_y,
+                    num_workgroups_z,
+                );
             }
 
             // Step 3: Vorticity calculation
@@ -716,7 +761,11 @@ impl LbmFluidSimulationTexture {
                 let num_workgroups_y = (self.height + workgroup_size_xy - 1) / workgroup_size_xy;
                 let num_workgroups_z = (self.depth + workgroup_size_z - 1) / workgroup_size_z;
 
-                vorticity_pass.dispatch_workgroups(num_workgroups_x, num_workgroups_y, num_workgroups_z);
+                vorticity_pass.dispatch_workgroups(
+                    num_workgroups_x,
+                    num_workgroups_y,
+                    num_workgroups_z,
+                );
             }
 
             queue.submit(std::iter::once(encoder.finish()));
@@ -767,17 +816,8 @@ impl LbmFluidSimulationTexture {
                 .map(|chunk| chunk[2]) // Vorticity Z-component (can be +/-)
                 .collect();
 
-            // Debug: Check value variation
-            let min_val = vorticity_slice.iter().copied().fold(f32::INFINITY, f32::min);
-            let max_val = vorticity_slice.iter().copied().fold(f32::NEG_INFINITY, f32::max);
-            let avg_val = vorticity_slice.iter().sum::<f32>() / vorticity_slice.len() as f32;
-            println!("🔍 Vorticity Z-slice: min={:.6}, max={:.6}, avg={:.6}, values varying: {}",
-                     min_val, max_val, avg_val, min_val != max_val);
-
             vorticity_slice
         } else {
-            println!("⚠️ Vorticity slice bounds error: start={}, size={}, buffer_len={}",
-                     slice_start, slice_size * 4, self.cpu_vorticity.len());
             vec![0.0; slice_size]
         }
     }
@@ -831,7 +871,9 @@ impl LbmFluidSimulationTexture {
     /// Sync GPU vorticity data back to CPU for visualization (using buffer copies)
     fn sync_vorticity_to_cpu(&mut self, device: &Device, queue: &Queue) {
         if let Some(ref gpu_resources) = self.gpu_resources {
-            let buffer_size = (self.width * self.height * self.depth * 4 * std::mem::size_of::<f32>() as u32) as u64;
+            let buffer_size =
+                (self.width * self.height * self.depth * 4 * std::mem::size_of::<f32>() as u32)
+                    as u64;
 
             let staging_buffer = device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("LBM Vorticity Staging (3D Texture)"),
@@ -870,10 +912,6 @@ impl LbmFluidSimulationTexture {
                 // Update CPU vorticity data
                 if self.cpu_vorticity.len() == f32_data.len() {
                     self.cpu_vorticity.copy_from_slice(f32_data);
-                    println!("✅ Synced {} vorticity values to CPU", f32_data.len());
-                } else {
-                    println!("⚠️ Vorticity buffer size mismatch: CPU={}, GPU={}",
-                             self.cpu_vorticity.len(), f32_data.len());
                 }
             }
         }
@@ -882,7 +920,9 @@ impl LbmFluidSimulationTexture {
     /// Sync GPU velocity data back to CPU for air speed visualization
     fn sync_velocity_to_cpu(&mut self, device: &Device, queue: &Queue) {
         if let Some(ref gpu_resources) = self.gpu_resources {
-            let buffer_size = (self.width * self.height * self.depth * 4 * std::mem::size_of::<f32>() as u32) as u64;
+            let buffer_size =
+                (self.width * self.height * self.depth * 4 * std::mem::size_of::<f32>() as u32)
+                    as u64;
 
             let staging_buffer = device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("LBM Velocity Staging (3D Texture)"),
@@ -952,9 +992,13 @@ impl haggis::simulation::traits::Simulation for LbmFluidSimulationTexture {
                 self.params.tau,
                 self.params.inlet_velocity,
                 self.params.outlet_pressure,
-                self.params.sphere_radius
+                self.params.sphere_radius,
             ];
-            queue.write_buffer(&gpu_resources.params_buffer, 0, bytemuck::cast_slice(&params_data));
+            queue.write_buffer(
+                &gpu_resources.params_buffer,
+                0,
+                bytemuck::cast_slice(&params_data),
+            );
         }
 
         // Handle cut plane updates
@@ -980,13 +1024,20 @@ impl haggis::simulation::traits::Simulation for LbmFluidSimulationTexture {
                     ColoringMode::AirSpeed => self.sync_velocity_to_cpu(device, queue),
                 }
                 self.vorticity_update_counter = 0;
+
+                // Update cut plane with new data after sync
+                self.update_visualization_cut_plane(device, queue);
             }
         }
 
         self.base.update_gpu(device, queue, _delta_time);
     }
 
-    fn apply_gpu_results_to_scene(&mut self, device: &Device, scene: &mut haggis::gfx::scene::Scene) {
+    fn apply_gpu_results_to_scene(
+        &mut self,
+        device: &Device,
+        scene: &mut haggis::gfx::scene::Scene,
+    ) {
         self.base.apply_gpu_results_to_scene(device, scene);
     }
 
@@ -998,7 +1049,11 @@ impl haggis::simulation::traits::Simulation for LbmFluidSimulationTexture {
                 ui.separator();
 
                 ui.text(&format!("Timestep: {}", self.generation));
-                ui.text(&format!("Grid Size: {}³ ({} cells)", GRID_SIZE, GRID_SIZE * GRID_SIZE * GRID_SIZE));
+                ui.text(&format!(
+                    "Grid Size: {}³ ({} cells)",
+                    GRID_SIZE,
+                    GRID_SIZE * GRID_SIZE * GRID_SIZE
+                ));
                 ui.text(&format!("Lattice: D3Q{}", D3Q19_DIRECTIONS));
                 ui.text(&format!("GPU Ready: {}", self.gpu_resources.is_some()));
 
@@ -1009,7 +1064,11 @@ impl haggis::simulation::traits::Simulation for LbmFluidSimulationTexture {
                 ui.separator();
 
                 // Play/Pause controls
-                if ui.button(if self.is_paused { "▶ Play" } else { "⏸ Pause" }) {
+                if ui.button(if self.is_paused {
+                    "▶ Play"
+                } else {
+                    "⏸ Pause"
+                }) {
                     self.is_paused = !self.is_paused;
                 }
 
@@ -1018,32 +1077,44 @@ impl haggis::simulation::traits::Simulation for LbmFluidSimulationTexture {
                 // Flow Parameters
                 ui.text("Flow Parameters:");
 
-                if ui.slider_config("Relaxation Time (τ)", 0.51, 2.0)
+                if ui
+                    .slider_config("Relaxation Time (τ)", 0.51, 2.0)
                     .display_format("%.3f")
-                    .build(&mut self.params.tau) {
+                    .build(&mut self.params.tau)
+                {
                     // Parameters will be updated next frame
                 }
 
-                if ui.slider_config("Inlet Velocity", 0.0, 0.15)
+                if ui
+                    .slider_config("Inlet Velocity", 0.0, 0.15)
                     .display_format("%.3f")
-                    .build(&mut self.params.inlet_velocity) {
+                    .build(&mut self.params.inlet_velocity)
+                {
                     // Parameters will be updated next frame
                 }
 
-                if ui.slider_config("Outlet Pressure", 0.8, 1.2)
+                if ui
+                    .slider_config("Outlet Pressure", 0.8, 1.2)
                     .display_format("%.3f")
-                    .build(&mut self.params.outlet_pressure) {
+                    .build(&mut self.params.outlet_pressure)
+                {
                     // Parameters will be updated next frame
                 }
 
-                if ui.slider_config("Sphere Radius", 4.0, 15.0)
+                if ui
+                    .slider_config("Sphere Radius", 4.0, 15.0)
                     .display_format("%.1f")
-                    .build(&mut self.params.sphere_radius) {
+                    .build(&mut self.params.sphere_radius)
+                {
                     // Parameters will be updated next frame
                 }
 
-                ui.text(&format!("Kinematic Viscosity: {:.6}", (self.params.tau - 0.5) / 3.0));
-                let reynolds = self.params.inlet_velocity * self.params.sphere_radius * 2.0 / ((self.params.tau - 0.5) / 3.0);
+                ui.text(&format!(
+                    "Kinematic Viscosity: {:.6}",
+                    (self.params.tau - 0.5) / 3.0
+                ));
+                let reynolds = self.params.inlet_velocity * self.params.sphere_radius * 2.0
+                    / ((self.params.tau - 0.5) / 3.0);
                 ui.text(&format!("Reynolds Number: {:.1}", reynolds));
 
                 // Show flow regime
@@ -1062,10 +1133,18 @@ impl haggis::simulation::traits::Simulation for LbmFluidSimulationTexture {
 
                 // Coloring mode toggle
                 let mut mode_changed = false;
-                if ui.radio_button("Vorticity (Red=CW, Green=CCW)", &mut self.coloring_mode, ColoringMode::Vorticity) {
+                if ui.radio_button(
+                    "Vorticity (Red=CW, Green=CCW)",
+                    &mut self.coloring_mode,
+                    ColoringMode::Vorticity,
+                ) {
                     mode_changed = true;
                 }
-                if ui.radio_button("Air Speed (Blue=Slow, Red=Fast)", &mut self.coloring_mode, ColoringMode::AirSpeed) {
+                if ui.radio_button(
+                    "Air Speed (Blue=Slow, Red=Fast)",
+                    &mut self.coloring_mode,
+                    ColoringMode::AirSpeed,
+                ) {
                     mode_changed = true;
                 }
 
@@ -1075,20 +1154,25 @@ impl haggis::simulation::traits::Simulation for LbmFluidSimulationTexture {
 
                 ui.separator();
                 ui.text("Scale and Position:");
-                if ui.slider_config("Scale", 0.5, 5.0)
+                if ui
+                    .slider_config("Scale", 0.5, 5.0)
                     .display_format("%.1f")
-                    .build(&mut self.visualization_scale) {
+                    .build(&mut self.visualization_scale)
+                {
                     self.needs_cut_plane_update = true;
                 }
 
                 ui.text("Cut Plane (Z-slice):");
-                if ui.slider_config("Z Position", 0.0, 1.0)
+                if ui
+                    .slider_config("Z Position", 0.0, 1.0)
                     .display_format("%.2f")
-                    .build(&mut self.cut_plane_z) {
+                    .build(&mut self.cut_plane_z)
+                {
                     self.needs_cut_plane_update = true;
                 }
 
-                let z_layer = ((self.cut_plane_z * (GRID_DEPTH - 1) as f32).round() as u32).min(GRID_DEPTH - 1);
+                let z_layer = ((self.cut_plane_z * (GRID_DEPTH - 1) as f32).round() as u32)
+                    .min(GRID_DEPTH - 1);
                 ui.text(&format!("Viewing layer {}/{}", z_layer, GRID_DEPTH - 1));
 
                 ui.separator();
@@ -1513,6 +1597,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create the main application
     let mut app = haggis::default();
+
+    // Disable shadows for better fluid visualization focus
+    app.set_shadows_enabled(false);
 
     // Create materials
     app.app_state
