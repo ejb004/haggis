@@ -47,9 +47,11 @@
 
 pub mod binding_builder;
 pub mod binding_types;
+pub mod typed_buffer;
 pub mod uniform_buffer;
 
 // Re-export main types for convenience
 pub use binding_builder::{BindGroupBuilder, BindGroupLayoutBuilder, BindGroupLayoutWithDesc};
 pub use binding_types::*;
+pub use typed_buffer::{TypedBuffer, TypedBufferBuilder, VertexBuffer, IndexBuffer, UniformBuffer as TypedUniformBuffer, StorageBuffer};
 pub use uniform_buffer::UniformBuffer;

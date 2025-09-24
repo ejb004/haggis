@@ -51,16 +51,21 @@
 pub mod app;
 pub mod builder;
 pub mod compute;
+pub mod error;
 pub mod gfx;
+pub mod haggis_builder;
 pub mod performance;
 pub mod prelude;
+pub mod resources;
 pub mod simulation;
 pub mod ui;
+pub mod validation;
 pub mod visualization;
 pub mod wgpu_utils;
 
 // Re-export main types for convenience
 pub use app::{HaggisApp, ComputeMode};
+pub use haggis_builder::Haggis;
 pub use ui::{UiFont, UiStyle};
 
 // Re-export builder types
@@ -69,8 +74,17 @@ pub use builder::{Builder, CommonConfig, ConfigurableBuilder, ExecutionHint};
 // Re-export compute types
 pub use compute::{ComputeEngine, ComputeBuilder, ComputeOperation};
 
+// Re-export error types
+pub use error::{HaggisError, HaggisResult, ErrorBuilder};
+
 // Re-export visualization types for external use
 pub use visualization::{CutPlane2D, VisualizationComponent, VisualizationManager};
+
+// Re-export resource management types
+pub use resources::{ResourceManager, ResourceHandle, ResourcePool, ManagedResource, ResourceConfig, ResourceMetrics};
+
+// Re-export validation types
+pub use validation::{Validator, ValidationLevel, ValidationSeverity, ValidationRule};
 
 /// Creates a default Haggis application instance.
 ///

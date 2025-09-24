@@ -47,6 +47,9 @@
 pub use crate::app::HaggisApp;
 pub use crate::default;
 
+// Re-export error handling types
+pub use crate::error::{HaggisError, HaggisResult, ErrorBuilder};
+
 // Re-export graphics and scene types
 pub use crate::gfx::scene::Scene;
 pub use crate::gfx::camera::CameraManager;
@@ -79,3 +82,17 @@ pub use std::time::Instant;
 
 // Re-export wgpu types commonly used in GPU simulations
 pub use wgpu::{Device, Queue};
+
+// Re-export resource management types
+pub use crate::resources::{
+    ResourceManager, ResourceHandle, ResourcePool, ManagedResource,
+    ResourceConfig, ResourceMetrics
+};
+
+// Re-export validation framework types
+pub use crate::validation::{
+    Validator, ValidationLevel, ValidationSeverity, ValidationRule
+};
+
+// Re-export builder types
+pub use crate::haggis_builder::Haggis;

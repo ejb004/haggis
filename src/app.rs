@@ -215,6 +215,8 @@ pub struct AppState {
     pub object_picker: ObjectPicker,
     /// Current mouse position for picking
     mouse_position: (f32, f32),
+    /// Position where the mouse button was pressed down
+    mouse_press_position: Option<(f32, f32)>,
     /// Whether UI captured input in the last frame
     ui_wants_input: bool,
 }
@@ -277,6 +279,7 @@ impl HaggisApp {
                 compute_stop_signal: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
                 object_picker: ObjectPicker::new(),
                 mouse_position: (0.0, 0.0),
+                mouse_press_position: None,
                 ui_wants_input: false,
             },
         }
@@ -1300,13 +1303,23 @@ impl ApplicationHandler for AppState {
                 // Track mouse position for picking
                 self.mouse_position = (position.x as f32, position.y as f32);
             }
-            WindowEvent::MouseInput { 
+            WindowEvent::MouseInput {
                 button: winit::event::MouseButton::Left,
-                state: winit::event::ElementState::Pressed,
+                state,
                 ..
             } => {
-                // Handle left mouse click for object picking
-                self.handle_mouse_click();
+                match state {
+                    winit::event::ElementState::Pressed => {
+                        // Record where the mouse button was pressed down
+                        self.mouse_press_position = Some(self.mouse_position);
+                    }
+                    winit::event::ElementState::Released => {
+                        // Handle potential object selection only on mouse release
+                        self.handle_mouse_click();
+                        // Clear the press position
+                        self.mouse_press_position = None;
+                    }
+                }
             }
             WindowEvent::CloseRequested => {
                 event_loop.exit();
@@ -1568,6 +1581,23 @@ impl AppState {
         // Check if UI wants input (to avoid picking while interacting with UI)
         if self.ui_wants_input {
             return; // UI is capturing input, don't pick objects
+        }
+
+        // Check if this was actually a click (not a drag)
+        // If the mouse moved too much between press and release, treat it as a drag, not a click
+        if let Some(press_pos) = self.mouse_press_position {
+            let dx = self.mouse_position.0 - press_pos.0;
+            let dy = self.mouse_position.1 - press_pos.1;
+            let distance_moved = (dx * dx + dy * dy).sqrt();
+
+            // If the mouse moved more than 5 pixels, consider it a drag rather than a click
+            const CLICK_THRESHOLD: f32 = 5.0;
+            if distance_moved > CLICK_THRESHOLD {
+                return; // This was a drag, not a click, so don't select objects
+            }
+        } else {
+            // No press position recorded, shouldn't happen but be safe
+            return;
         }
 
         // Get screen size
