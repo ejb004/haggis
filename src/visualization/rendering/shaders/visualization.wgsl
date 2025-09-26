@@ -63,7 +63,7 @@ var<uniform> filter_uniforms: FilterUniforms;
 // Negative vorticity (clockwise) = Green -> Black (at zero) -> Red = Positive vorticity (counter-clockwise)
 // Smooth scientific color scale with proper interpolation
 fn vorticity_to_color(vorticity: f32) -> vec4<f32> {
-    let max_vorticity = 0.1; // Much smaller range for LBM vorticity
+    let max_vorticity = 0.3; // Tripled range for LBM vorticity
     let normalized = clamp(vorticity / max_vorticity, -1.0, 1.0);
 
     // Scientific diverging colormap: Green (-1) -> Black (0) -> Red (+1)
@@ -85,7 +85,7 @@ fn vorticity_to_color(vorticity: f32) -> vec4<f32> {
 // Low speed = Blue, High speed = Red
 // Smooth gradient through spectrum
 fn velocity_to_color(speed: f32) -> vec4<f32> {
-    let max_speed = 0.3; // Increased range for realistic LBM velocity magnitudes
+    let max_speed = 0.9; // Tripled range for realistic LBM velocity magnitudes
     let normalized = clamp(speed / max_speed, 0.0, 1.0);
 
     // Blue to red color mapping for speed visualization
@@ -177,12 +177,12 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
         // Apply coloring based on mode
         if (filter_uniforms.coloring_mode == 0u) {
             // Vorticity mode - decode from [0,1] back to [-max,max]
-            let max_vorticity = 0.1; // Much smaller range for LBM vorticity
+            let max_vorticity = 0.3; // Tripled range for LBM vorticity
             let decoded_vorticity = (encoded_value * 2.0 - 1.0) * max_vorticity;
             return vorticity_to_color(decoded_vorticity);
         } else {
             // Air speed mode - decode from [0,1] back to [0,max]
-            let max_speed = 0.3; // Increased range for realistic LBM velocity magnitudes
+            let max_speed = 0.9; // Tripled range for realistic LBM velocity magnitudes
             let decoded_speed = encoded_value * max_speed;
             return velocity_to_color(decoded_speed);
         }

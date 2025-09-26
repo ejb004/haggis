@@ -311,7 +311,7 @@ impl CutPlane2D {
             ColoringMode::Vorticity => {
                 // Encode vorticity values in range [0,1] for texture, preserving sign
                 // Negative values: 0.0 to 0.5, Positive values: 0.5 to 1.0
-                let max_vorticity = 0.1; // Much smaller range for LBM vorticity (match shader)
+                let max_vorticity = 0.3; // Tripled range for LBM vorticity (match shader)
                 data.iter()
                     .map(|&value| {
                         let normalized = value / max_vorticity;
@@ -322,7 +322,7 @@ impl CutPlane2D {
             },
             ColoringMode::AirSpeed => {
                 // Encode speed values in range [0,1] for texture
-                let max_speed = 0.3; // Increased range for realistic LBM velocity magnitudes (match shader)
+                let max_speed = 0.9; // Tripled range for realistic LBM velocity magnitudes (match shader)
                 data.iter()
                     .map(|&value| (value / max_speed).clamp(0.0, 1.0))
                     .collect()
