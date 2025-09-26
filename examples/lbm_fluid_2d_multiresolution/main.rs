@@ -36,6 +36,7 @@
 use cgmath::Vector3;
 use haggis::prelude::*;
 use haggis::{simulation::BaseSimulation, visualization::traits::VisualizationComponent};
+use haggis::visualization::ui::cut_plane_controls::ColoringMode;
 
 /// Grid configuration for the 2D LBM simulation with multiresolution
 const FINE_GRID_SIZE: u32 = 256;      // Fine grid around obstacle
@@ -68,11 +69,11 @@ pub struct Lbm2dParams {
 impl Default for Lbm2dParams {
     fn default() -> Self {
         Self {
-            tau: 1.0,                    // Higher viscosity for stability
-            inlet_velocity: 0.05,        // Lower inlet velocity to reduce artifacting
+            tau: 0.54,                   // Relaxation time for lower viscosity
+            inlet_velocity: 0.1,         // Higher inlet velocity for better flow dynamics
             outlet_pressure: 1.0,        // Atmospheric pressure outlet
             circle_radius: 15.0,         // Smaller circle for better flow resolution
-            circle_center_x: 0.3,        // Circle at 30% domain width for better wake
+            circle_center_x: 0.2,        // Circle at 20% domain width, closer to inlet
             circle_center_y: 0.5,        // Circle at domain center height
             refinement_factor: 2,        // 2:1 grid refinement
         }
@@ -238,17 +239,17 @@ impl Lbm2dMultiresolutionSimulation {
     fn new() -> Self {
         let mut base = BaseSimulation::new("LBM 2D Multiresolution");
 
-        // Create and configure the visualization for velocity field with correct aspect ratio
+        // Create and configure the visualization for velocity field with correct 2:1 aspect ratio
         let mut velocity_plane = CutPlane2D::new();
         velocity_plane.set_position(Vector3::new(0.0, 0.0, 0.0));
-        velocity_plane.set_size(3.0); // Wider to accommodate 2:1 aspect ratio
+        velocity_plane.set_size_2d(4.0, 2.0); // 2:1 aspect ratio plane to match data proportions
 
         // Initialize with empty data (downsampled by 2x)
         let downsample_factor = 2u32;
         let downsampled_width = TOTAL_GRID_WIDTH / downsample_factor;
         let downsampled_height = TOTAL_GRID_HEIGHT / downsample_factor;
         let empty_data = vec![0.0; (downsampled_width * downsampled_height) as usize];
-        velocity_plane.update_data(empty_data, downsampled_height, downsampled_width);
+        velocity_plane.update_data(empty_data, downsampled_width, downsampled_height);
 
         // Add visualization to base
         base.add_visualization("velocity_field", velocity_plane);
@@ -256,12 +257,27 @@ impl Lbm2dMultiresolutionSimulation {
         // Create vorticity visualization with same aspect ratio
         let mut vorticity_plane = CutPlane2D::new();
         vorticity_plane.set_position(Vector3::new(0.0, 0.0, 0.1)); // Slightly offset
-        vorticity_plane.set_size(3.0);
+        vorticity_plane.set_size_2d(4.0, 2.0); // 2:1 aspect ratio plane to match data proportions
 
         let empty_vorticity = vec![0.0; (downsampled_width * downsampled_height) as usize];
-        vorticity_plane.update_data(empty_vorticity, downsampled_height, downsampled_width);
+        vorticity_plane.update_data(empty_vorticity, downsampled_width, downsampled_height);
 
         base.add_visualization("vorticity_field", vorticity_plane);
+
+        // Create grid resolution visualization
+        let mut grid_resolution_plane = CutPlane2D::new();
+        grid_resolution_plane.set_position(Vector3::new(0.0, 0.0, 0.2)); // Higher offset
+        grid_resolution_plane.set_size_2d(4.0, 2.0); // 2:1 aspect ratio plane to match data proportions
+
+        // Use AirSpeed coloring mode: 0.0 (fine) = blue/black, 1.0 (coarse) = red/white
+        grid_resolution_plane.set_coloring_mode(ColoringMode::AirSpeed);
+
+        // Initialize with grid level data
+        let grid_levels = Self::generate_grid_levels(&Lbm2dParams::default());
+        let downsampled_grid_levels = Self::downsample_grid_levels(&grid_levels, downsample_factor as usize);
+        grid_resolution_plane.update_data(downsampled_grid_levels, downsampled_width, downsampled_height);
+
+        base.add_visualization("grid_resolution", grid_resolution_plane);
 
         let simulation = Self {
             base,
@@ -707,9 +723,22 @@ impl Lbm2dMultiresolutionSimulation {
                 1.0/36.0, 1.0/36.0, 1.0/36.0, 1.0/36.0, // 5-8: diagonal directions
             ];
 
+            // Add small random noise to initial conditions for flow instabilities
+            use std::collections::hash_map::DefaultHasher;
+            use std::hash::{Hash, Hasher};
+
             for cell in 0..total_cells {
                 for i in 0..D2Q9_DIRECTIONS as usize {
-                    distributions[cell * D2Q9_DIRECTIONS as usize + i] = weights[i];
+                    // Create deterministic "random" noise based on cell position
+                    let mut hasher = DefaultHasher::new();
+                    (cell, i).hash(&mut hasher);
+                    let hash_value = hasher.finish();
+
+                    // Convert hash to small noise value (±1% of base weight)
+                    let noise_amplitude = 0.01;
+                    let noise = (hash_value as f32 / u64::MAX as f32 - 0.5) * 2.0 * noise_amplitude;
+
+                    distributions[cell * D2Q9_DIRECTIONS as usize + i] = weights[i] * (1.0 + noise);
                 }
             }
 
@@ -914,8 +943,8 @@ impl Lbm2dMultiresolutionSimulation {
         // Update velocity visualization with downsampled data
         if let Some(visualization) = self.base.get_visualization_mut("velocity_field") {
             if let Some(velocity_plane) = visualization.as_any_mut().downcast_mut::<CutPlane2D>() {
-                velocity_plane.update_data(velocity_magnitudes, downsampled_height, downsampled_width);
-                velocity_plane.set_size(self.visualization_scale); // Apply current scale
+                velocity_plane.update_data(velocity_magnitudes, downsampled_width, downsampled_height);
+                velocity_plane.set_size_2d(self.visualization_scale * 2.0, self.visualization_scale); // 2:1 aspect ratio scaling
                 velocity_plane.update(0.0, Some(device), Some(queue));
             }
         }
@@ -933,13 +962,48 @@ impl Lbm2dMultiresolutionSimulation {
         // Update vorticity visualization with downsampled data
         if let Some(visualization) = self.base.get_visualization_mut("vorticity_field") {
             if let Some(vorticity_plane) = visualization.as_any_mut().downcast_mut::<CutPlane2D>() {
-                vorticity_plane.update_data(vorticity_values, downsampled_height, downsampled_width);
-                vorticity_plane.set_size(self.visualization_scale); // Apply current scale
+                vorticity_plane.update_data(vorticity_values, downsampled_width, downsampled_height);
+                vorticity_plane.set_size_2d(self.visualization_scale * 2.0, self.visualization_scale); // 2:1 aspect ratio scaling
                 vorticity_plane.update(0.0, Some(device), Some(queue));
             }
         }
 
+        // Update grid resolution visualization (only needs to be done once since grid levels don't change)
+        if let Some(visualization) = self.base.get_visualization_mut("grid_resolution") {
+            if let Some(grid_plane) = visualization.as_any_mut().downcast_mut::<CutPlane2D>() {
+                grid_plane.set_size_2d(self.visualization_scale * 2.0, self.visualization_scale); // 2:1 aspect ratio scaling
+                grid_plane.update(0.0, Some(device), Some(queue));
+            }
+        }
+
         self.needs_visualization_update = false;
+    }
+
+    /// Downsample grid level data to match visualization resolution
+    fn downsample_grid_levels(grid_levels: &[u32], factor: usize) -> Vec<f32> {
+        let width = TOTAL_GRID_WIDTH as usize;
+        let height = TOTAL_GRID_HEIGHT as usize;
+        let new_width = width / factor;
+        let new_height = height / factor;
+        let mut downsampled = Vec::with_capacity(new_width * new_height);
+
+        for new_y in 0..new_height {
+            for new_x in 0..new_width {
+                // Sample the center of each downsampled cell
+                let old_x = new_x * factor + factor / 2;
+                let old_y = new_y * factor + factor / 2;
+
+                if old_x < width && old_y < height {
+                    let index = old_y * width + old_x;
+                    // Convert grid level to float: 0.0 = fine, 1.0 = coarse
+                    downsampled.push(grid_levels[index] as f32);
+                } else {
+                    downsampled.push(1.0); // Default to coarse
+                }
+            }
+        }
+
+        downsampled
     }
 
     /// Downsample 2D data using area averaging to reduce aliasing
@@ -1031,7 +1095,7 @@ impl haggis::simulation::traits::Simulation for Lbm2dMultiresolutionSimulation {
                 ui.text(&format!("Timestep: {}", self.generation));
                 ui.text(&format!("Grid Size: {}x{} ({} cells)",
                     self.width, self.height, self.width * self.height));
-                ui.text(&format!("Aspect Ratio: 2:1 ({}x{})", TOTAL_GRID_WIDTH, TOTAL_GRID_HEIGHT));
+                ui.text(&format!("Grid Aspect Ratio: 2:1 ({}x{})", TOTAL_GRID_WIDTH, TOTAL_GRID_HEIGHT));
                 ui.text(&format!("Max Grid Depth: 2 levels (Fine+Coarse)"));
                 ui.text(&format!("Lattice: D2Q{}", D2Q9_DIRECTIONS));
                 ui.text(&format!("GPU Ready: {}", self.gpu_resources.is_some()));
@@ -1069,7 +1133,7 @@ impl haggis::simulation::traits::Simulation for Lbm2dMultiresolutionSimulation {
                     .display_format("%.1f")
                     .build(&mut self.params.circle_radius);
 
-                ui.slider_config("Circle Center X", 0.1, 0.4)
+                ui.slider_config("Circle Center X", 0.1, 0.5)
                     .display_format("%.2f")
                     .build(&mut self.params.circle_center_x);
 
@@ -1130,7 +1194,8 @@ impl haggis::simulation::traits::Simulation for Lbm2dMultiresolutionSimulation {
 
                 ui.text("Display Info:");
                 ui.text(&format!("Current scale: {:.1}x", self.visualization_scale));
-                ui.text("Note: 2:1 aspect ratio preserved");
+                ui.text(&format!("Visualization size: {:.1}x{:.1}", self.visualization_scale, self.visualization_scale));
+                ui.text("Note: Square visualization with 2:1 data aspect ratio");
 
                 ui.separator();
 
@@ -1143,6 +1208,14 @@ impl haggis::simulation::traits::Simulation for Lbm2dMultiresolutionSimulation {
                 } else {
                     ui.text_colored([1.0, 0.5, 0.0, 1.0], "⚙ Initializing GPU...");
                 }
+
+                ui.separator();
+                ui.text("Visualization Layers:");
+                ui.bullet_text("Velocity field (bottom): Flow speed magnitude");
+                ui.bullet_text("Vorticity field (middle): Rotation patterns");
+                ui.bullet_text("Grid resolution (top): Fine vs coarse regions");
+                ui.text("  • Blue = Fine grid (level 0)");
+                ui.text("  • Red = Coarse grid (level 1)");
 
                 ui.separator();
                 ui.text("2D LBM Features:");

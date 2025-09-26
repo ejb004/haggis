@@ -69,6 +69,9 @@ pub struct CutPlane2D {
     // Display position in 3D space
     position: Vector3<f32>,
     size: f32,
+    // Separate width and height for aspect ratio support
+    width: f32,
+    height: f32,
 
     // Update flags
     needs_material_update: bool,
@@ -93,6 +96,8 @@ impl CutPlane2D {
             material: None,
             position: Vector3::new(0.0, 0.0, 0.0),
             size: 2.0,
+            width: 2.0,
+            height: 2.0,
             needs_material_update: true,
             needs_scene_object_update: true,
             needs_filter_update: false,
@@ -134,6 +139,8 @@ impl CutPlane2D {
             material: None,
             position: Vector3::new(0.0, 0.0, 0.0),
             size: 2.0,
+            width: 2.0,
+            height: 2.0,
             needs_material_update: true,
             needs_scene_object_update: true,
             needs_filter_update: false,
@@ -187,9 +194,29 @@ impl CutPlane2D {
         self.position = position;
     }
 
-    /// Set size of the visualization plane
+    /// Set size of the visualization plane (uniform scaling, backward compatible)
     pub fn set_size(&mut self, size: f32) {
         self.size = size;
+        self.width = size;
+        self.height = size;
+    }
+
+    /// Set size of the visualization plane with separate width and height for aspect ratio control
+    pub fn set_size_2d(&mut self, width: f32, height: f32) {
+        self.width = width;
+        self.height = height;
+        // Keep size as the larger dimension for backward compatibility
+        self.size = width.max(height);
+    }
+
+    /// Get the width of the visualization plane
+    pub fn get_width(&self) -> f32 {
+        self.width
+    }
+
+    /// Get the height of the visualization plane
+    pub fn get_height(&self) -> f32 {
+        self.height
     }
 
     /// Set texture filtering mode (Sharp vs Smooth)
@@ -243,7 +270,7 @@ impl CutPlane2D {
 
             Some(crate::gfx::rendering::VisualizationPlane {
                 position: self.position,
-                size: cgmath::Vector3::new(self.size, self.size, self.size),
+                size: cgmath::Vector3::new(self.width, self.height, 1.0),
                 material: material.clone(),
                 data_buffer,  // Pass GPU buffer directly to renderer!
                 texture: None,
@@ -388,7 +415,7 @@ impl CutPlane2D {
                 "Position: ({:.2}, {:.2}, {:.2})",
                 self.position.x, self.position.y, self.position.z
             ));
-            ui.text(&format!("Size: {:.2}", self.size));
+            ui.text(&format!("Size: {:.2}x{:.2}", self.width, self.height));
 
             ui.spacing();
 
@@ -513,7 +540,10 @@ impl VisualizationComponent for CutPlane2D {
             .build(&mut self.position.y);
         ui.slider_config("Position Z", -5.0, 5.0)
             .build(&mut self.position.z);
-        ui.slider_config("Size", 0.1, 10.0).build(&mut self.size);
+        ui.slider_config("Width", 0.1, 10.0).build(&mut self.width);
+        ui.slider_config("Height", 0.1, 10.0).build(&mut self.height);
+        // Update unified size for backward compatibility
+        self.size = self.width.max(self.height);
 
         ui.separator();
 

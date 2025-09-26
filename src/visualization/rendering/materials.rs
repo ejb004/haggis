@@ -478,7 +478,7 @@ impl VisualizationMaterial {
             // Create transform matrix exactly like regular objects: T * R * S
             let translation_matrix = cgmath::Matrix4::from_translation(position);
             let rotation_matrix = cgmath::Matrix4::from_angle_y(cgmath::Deg(0.0)); // No rotation for now
-            let scale_matrix = cgmath::Matrix4::from_scale(size.x); // Use uniform scale like regular objects
+            let scale_matrix = cgmath::Matrix4::from_nonuniform_scale(size.x, size.y, 1.0); // Support non-uniform scaling for aspect ratios
             let model_matrix = translation_matrix * rotation_matrix * scale_matrix;
 
             // Convert to the format expected by wgsl (column-major)
