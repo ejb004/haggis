@@ -13,7 +13,10 @@
       "Read(//Users/ethanbeddard/Documents/DigitalProjects/**)",
       "Bash(gtimeout:*)",
       "Bash(RUST_LOG=info cargo run --example lbm_fluid_2d_multiresolution)",
-      "Read(//var/folders/_c/mmgry7c9663crzktd9dqg_gw0000gn/T/TemporaryItems/NSIRD_screencaptureui_nYYjcZ/**)"
+      "Read(//var/folders/_c/mmgry7c9663crzktd9dqg_gw0000gn/T/TemporaryItems/NSIRD_screencaptureui_nYYjcZ/**)",
+      "Bash(RUST_LOG=info cargo run --example lbm_fluid_2d_4layer)",
+      "Bash(RUST_LOG=info gtimeout 30s cargo run --example lbm_fluid_2d_4layer)",
+      "Read(//var/folders/_c/mmgry7c9663crzktd9dqg_gw0000gn/T/TemporaryItems/NSIRD_screencaptureui_c5apr9/**)"
     ],
     "deny": [],
     "ask": []
